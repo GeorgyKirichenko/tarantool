@@ -307,9 +307,13 @@ test:do_catchsql_test(
         [[
             CREATE TABLE t(a,b,c, PRIMARY KEY(a));
             CREATE INDEX i1 ON t(a, a, b, c, c, b, b, b, c, b, c);
-            pragma index_info = t.i1;
+            pragma index_info(t.i1);
         ]],
-        {0, {0,0,"A",1,1,"B",2,2,"C"}}
+        {0, {
+            0, 0, 'A', 0, 'BINARY', 1, 'scalar',
+            1, 1, 'B', 0, 'BINARY', 1, 'scalar',
+            2, 2, 'C', 0, 'BINARY', 1, 'scalar',
+        }}
 )
 
 -- There was the following bug:

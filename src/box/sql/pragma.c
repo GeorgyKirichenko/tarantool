@@ -322,8 +322,7 @@ sql_pragma_table_stats(struct space *space, void *data)
 }
 
 /**
- * This function handles PRAGMA INDEX_INFO and PRAGMA INDEX_XINFO
- * statements.
+ * This function handles PRAGMA INDEX_INFO statement.
  *
  * @param parse Current parsing content.
  * @param pragma Definition of index_info pragma.
@@ -349,32 +348,26 @@ sql_pragma_index_info(struct Parse *parse, const PragmaName *pragma,
 		return;
 	struct index *idx = space_index(space, iid);
 	assert(idx != NULL);
-	/* PRAGMA index_xinfo (more informative version). */
-	if (pragma->iArg > 0) {
-		parse->nMem = 6;
-	} else {
-		/* PRAGMA index_info ... */
-		parse->nMem = 3;
-	}
+	parse->nMem = 7;
 	struct Vdbe *v = sqlite3GetVdbe(parse);
 	assert(v != NULL);
 	uint32_t part_count = idx->def->key_def->part_count;
 	assert(parse->nMem <= pragma->nPragCName);
 	struct key_part *part = idx->def->key_def->parts;
 	for (uint32_t i = 0; i < part_count; i++, part++) {
-		sqlite3VdbeMultiLoad(v, 1, "iis", i, part->fieldno,
-				     space->def->fields[part->fieldno].name);
-		if (pragma->iArg > 0) {
-			const char *c_n;
-			uint32_t id = part->coll_id;
-			struct coll *coll = part->coll;
-			if (coll != NULL)
-				c_n = coll_by_id(id)->name;
-			else
-				c_n = "BINARY";
-			sqlite3VdbeMultiLoad(v, 4, "isi", part->sort_order,
-					     c_n, i < part_count);
-		}
+		const char *c_n;
+		uint32_t id = part->coll_id;
+		struct coll *coll = part->coll;
+		if (coll != NULL)
+			c_n = coll_by_id(id)->name;
+		else
+			c_n = "BINARY";
+		uint32_t fieldno = part->fieldno;
+		enum field_type type = space->def->fields[fieldno].type;
+		sqlite3VdbeMultiLoad(v, 1, "iisisis", i, fieldno,
+				     space->def->fields[fieldno].name,
+				     part->sort_order, c_n, i < part_count,
+				     field_type_strs[type]);
 		sqlite3VdbeAddOp2(v, OP_ResultRow, 1, parse->nMem);
 	}
 }
