@@ -3110,6 +3110,12 @@ case OP_OpenWrite:
 	assert(space != NULL);
 	struct index *index = space_index(space, p2);
 	assert(index != NULL);
+
+	if (access_check_space(space, PRIV_R) != 0) {
+		rc = SQL_TARANTOOL_ERROR;
+		goto abort_due_to_error;
+	}
+
 	/*
 	 * Since Tarantool iterator provides the full tuple,
 	 * we need a number of fields as wide as the table itself.
