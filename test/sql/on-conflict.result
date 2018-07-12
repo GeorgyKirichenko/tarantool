@@ -1,7 +1,15 @@
 test_run = require('test_run').new()
 ---
 ...
+---
+...
+---
+...
 engine = test_run:get_cfg('engine')
+---
+...
+---
+...
 ---
 ...
 box.sql.execute('pragma sql_default_engine=\''..engine..'\'')
@@ -43,7 +51,7 @@ box.sql.execute("CREATE TABLE t2(a INT PRIMARY KEY ON CONFLICT IGNORE)")
 --
 box.sql.execute("CREATE TABLE t (id INTEGER PRIMARY KEY, a CHECK (a > 5) ON CONFLICT REPLACE);")
 ---
-- error: keyword "ON" is reserved
+- error: keyword "CHECK" is reserved
 ...
 --
 -- gh-3473: Primary key can't be declared with NULL.
@@ -69,20 +77,23 @@ box.sql.execute("CREATE TABLE test (a int, b int NULL, c int, PRIMARY KEY(a, b, 
 --
 box.sql.execute("CREATE TABLE a (id INT PRIMARY KEY, a NOT NULL ON CONFLICT REPLACE DEFAULT 1, b NOT NULL ON CONFLICT REPLACE DEFAULT 2);")
 ---
+- error: keyword "NOT" is reserved
 ...
 box.sql.execute("INSERT INTO a VALUES(1, NULL, NULL);")
 ---
+- error: 'no such table: A'
 ...
 box.sql.execute("INSERT INTO a VALUES(2, NULL, NULL);")
 ---
+- error: 'no such table: A'
 ...
 box.sql.execute("SELECT * FROM a;")
 ---
-- - [1, 1, 2]
-  - [2, 1, 2]
+- error: 'no such table: A'
 ...
 box.sql.execute("DROP TABLE a;")
 ---
+- error: 'no such table: A'
 ...
 -- gh-3566: UPDATE OR IGNORE causes deletion of old entry.
 --

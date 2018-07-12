@@ -87,7 +87,7 @@ sqlite3ExprAffinity(Expr * pExpr)
 #ifndef SQLITE_OMIT_CAST
 	if (op == TK_CAST) {
 		assert(!ExprHasProperty(pExpr, EP_IntValue));
-		return sqlite3AffinityType(pExpr->u.zToken, 0);
+		return pExpr->affinity;
 	}
 #endif
 	if (op == TK_AGG_COLUMN || op == TK_COLUMN) {
@@ -98,6 +98,22 @@ sqlite3ExprAffinity(Expr * pExpr)
 		assert(pExpr->pLeft->flags & EP_xIsSelect);
 		return sqlite3ExprAffinity(pExpr->pLeft->x.pSelect->pEList->
 					   a[pExpr->iColumn].pExpr);
+	}
+	if (op == TK_PLUS) {
+		assert(pExpr->pRight != NULL && pExpr->pLeft != NULL);
+		enum affinity_type lhs_aff = sqlite3ExprAffinity(pExpr->pLeft);
+		enum affinity_type rhs_aff = sqlite3ExprAffinity(pExpr->pRight);
+		return sql_affinity_result(rhs_aff, lhs_aff);
+	}
+	if (op == TK_COLUMN) {
+		assert(pExpr->space_def != NULL);
+		const char *col_name = pExpr->u.zToken;
+		size_t name_len = strlen(col_name);
+		uint32_t field_no;
+		tuple_fieldno_by_name(pExpr->space_def->dict, col_name, name_len,
+				      field_name_hash(col_name, name_len),
+				      &field_no);
+		return pExpr->space_def->fields[field_no].affinity;
 	}
 	return pExpr->affinity;
 }
@@ -228,15 +244,9 @@ sql_expr_coll(Parse *parse, Expr *p, bool *is_found, uint32_t *coll_id)
 	return coll;
 }
 
-/*
- * pExpr is an operand of a comparison operator.  aff2 is the
- * type affinity of the other operand.  This routine returns the
- * type affinity that should be used for the comparison operator.
- */
-char
-sqlite3CompareAffinity(Expr * pExpr, char aff2)
+enum affinity_type
+sql_affinity_result(enum affinity_type aff1, enum affinity_type aff2)
 {
-	char aff1 = sqlite3ExprAffinity(pExpr);
 	if (aff1 && aff2) {
 		/* Both sides of the comparison are columns. If one has numeric
 		 * affinity, use that. Otherwise use no affinity.
@@ -273,11 +283,12 @@ comparisonAffinity(Expr * pExpr)
 	assert(pExpr->pLeft);
 	aff = sqlite3ExprAffinity(pExpr->pLeft);
 	if (pExpr->pRight) {
-		aff = sqlite3CompareAffinity(pExpr->pRight, aff);
+		enum affinity_type rhs_aff = sqlite3ExprAffinity(pExpr->pRight);
+		aff = sql_affinity_result(rhs_aff, aff);
 	} else if (ExprHasProperty(pExpr, EP_xIsSelect)) {
-		aff =
-		    sqlite3CompareAffinity(pExpr->x.pSelect->pEList->a[0].pExpr,
-					   aff);
+		enum affinity_type rhs_aff =
+			sqlite3ExprAffinity(pExpr->x.pSelect->pEList->a[0].pExpr);
+		aff = sql_affinity_result(rhs_aff, aff);
 	} else if (NEVER(aff == 0)) {
 		aff = AFFINITY_BLOB;
 	}
@@ -311,8 +322,10 @@ sqlite3IndexAffinityOk(Expr * pExpr, char idx_affinity)
 static u8
 binaryCompareP5(Expr * pExpr1, Expr * pExpr2, int jumpIfNull)
 {
-	u8 aff = (char)sqlite3ExprAffinity(pExpr2);
-	aff = (u8) sqlite3CompareAffinity(pExpr1, aff) | (u8) jumpIfNull;
+	enum affinity_type aff2 = sqlite3ExprAffinity(pExpr2);
+	enum affinity_type aff1 = sqlite3ExprAffinity(pExpr1);
+	enum affinity_type aff = sql_affinity_result(aff1, aff2) |
+				 (u8) jumpIfNull;
 	return aff;
 }
 
@@ -2314,11 +2327,12 @@ sqlite3FindInIndex(Parse * pParse,	/* Parsing context */
 		   u32 inFlags,	/* IN_INDEX_LOOP, _MEMBERSHIP, and/or _NOOP_OK */
 		   int *prRhsHasNull,	/* Register holding NULL status.  See notes */
 		   int *aiMap,	/* Mapping from Index fields to RHS fields */
-		   int *pSingleIdxCol	/* Tarantool. In case (nExpr == 1) it is meant by SQLite that
+		   int *pSingleIdxCol,	/* Tarantool. In case (nExpr == 1) it is meant by SQLite that
 					   column of interest is always 0, since index columns appear first
 					   in index. This is not the case for Tarantool, where index columns
 					   don't change order of appearance.
 					   So, use this field to store single column index.  */
+		   struct Index **pUseIdx  /* Index to use. */
     )
 {
 	Select *p;		/* SELECT to the right of IN operator */
@@ -2326,6 +2340,8 @@ sqlite3FindInIndex(Parse * pParse,	/* Parsing context */
 	int iTab = pParse->nTab++;	/* Cursor of the RHS table */
 	int mustBeUnique;	/* True if RHS must be unique */
 	Vdbe *v = sqlite3GetVdbe(pParse);	/* Virtual machine being coded */
+	if (pUseIdx)
+		*pUseIdx = NULL;
 
 	assert(pX->op == TK_IN);
 	mustBeUnique = (inFlags & IN_INDEX_LOOP) != 0;
@@ -2379,14 +2395,15 @@ sqlite3FindInIndex(Parse * pParse,	/* Parsing context */
 			/* RHS table */
 			char idxaff =
 				sqlite3TableColumnAffinity(pTab->def, iCol);
-			char cmpaff = sqlite3CompareAffinity(pLhs, idxaff);
+			enum affinity_type lhs_aff = sqlite3ExprAffinity(pLhs);
+			char cmpaff = sql_affinity_result(lhs_aff, idxaff);
 			testcase(cmpaff == AFFINITY_BLOB);
 			testcase(cmpaff == AFFINITY_TEXT);
 			switch (cmpaff) {
 			case AFFINITY_BLOB:
 				break;
 			case AFFINITY_TEXT:
-				/* sqlite3CompareAffinity() only returns TEXT if one side or the
+				/* sql_affinity_result() only returns TEXT if one side or the
 				 * other has no affinity and the other side is TEXT.  Hence,
 				 * the only way for cmpaff to be TEXT is for idxaff to be TEXT
 				 * and for the term on the LHS of the IN to have no affinity.
@@ -2465,6 +2482,8 @@ sqlite3FindInIndex(Parse * pParse,	/* Parsing context */
 				       || colUsed != (MASKBIT(nExpr) - 1));
 				if (colUsed == (MASKBIT(nExpr) - 1)) {
 					/* If we reach this point, that means the index pIdx is usable */
+					if (pUseIdx)
+						*pUseIdx = pIdx;
 					int iAddr = sqlite3VdbeAddOp0(v, OP_Once);
 					VdbeCoverage(v);
 					sqlite3VdbeAddOp4(v, OP_Explain,
@@ -2582,9 +2601,9 @@ exprINAffinity(Parse * pParse, Expr * pExpr)
 			Expr *pA = sqlite3VectorFieldSubexpr(pLeft, i);
 			char a = sqlite3ExprAffinity(pA);
 			if (pSelect) {
-				zRet[i] =
-				    sqlite3CompareAffinity(pSelect->pEList->
-							   a[i].pExpr, a);
+				struct Expr *e = pSelect->pEList->a[i].pExpr;
+				enum affinity_type aff = sqlite3ExprAffinity(e);
+				zRet[i] = sql_affinity_result(aff, a);
 			} else {
 				zRet[i] = a;
 			}
@@ -2985,6 +3004,7 @@ sqlite3ExprCodeIN(Parse * pParse,	/* Parsing and code generating context */
 	int addrTruthOp;	/* Address of opcode that determines the IN is true */
 	int destNotNull;	/* Jump here if a comparison is not true in step 6 */
 	int addrTop;		/* Top of the step-6 loop */
+	struct Index *pUseIndex; /* Index to use. */
 
 	pLeft = pExpr->pLeft;
 	if (sqlite3ExprCheckIN(pParse, pExpr))
@@ -3009,7 +3029,7 @@ sqlite3ExprCodeIN(Parse * pParse,	/* Parsing and code generating context */
 	eType = sqlite3FindInIndex(pParse, pExpr,
 				   IN_INDEX_MEMBERSHIP | IN_INDEX_NOOP_OK,
 				   destIfFalse == destIfNull ? 0 : &rRhsHasNull,
-				   aiMap, 0);
+				   aiMap, 0, &pUseIndex);
 
 	assert(pParse->nErr || nVector == 1 || eType == IN_INDEX_EPH
 	       || eType == IN_INDEX_INDEX_ASC || eType == IN_INDEX_INDEX_DESC);
@@ -3132,14 +3152,14 @@ sqlite3ExprCodeIN(Parse * pParse,	/* Parsing and code generating context */
 	sqlite3VdbeAddOp4(v, OP_Affinity, rLhs, nVector, 0, zAff,
 			  nVector);
 	if ((pExpr->flags & EP_xIsSelect)
-	    && !pExpr->is_ephemeral) {
+	    && !pExpr->is_ephemeral && pUseIndex != NULL) {
 		struct SrcList *src_list = pExpr->x.pSelect->pSrc;
 		assert(src_list->nSrc == 1);
 
 		struct Table *tab = src_list->a[0].pTab;
 		assert(tab != NULL);
 
-		struct Index *pk = sqlite3PrimaryKeyIndex(tab);
+		struct Index *pk = pUseIndex;
 		assert(pk);
 
 		uint32_t fieldno = pk->def->key_def->parts[0].fieldno;
@@ -3780,9 +3800,7 @@ sqlite3ExprCodeTarget(Parse * pParse, Expr * pExpr, int target)
 				sqlite3VdbeAddOp2(v, OP_SCopy, inReg, target);
 				inReg = target;
 			}
-			sqlite3VdbeAddOp2(v, OP_Cast, target,
-					  sqlite3AffinityType(pExpr->u.zToken,
-							      0));
+			sqlite3VdbeAddOp2(v, OP_Cast, target, pExpr->affinity);
 			testcase(usedAsColumnCache(pParse, inReg, inReg));
 			sqlite3ExprCacheAffinityChange(pParse, inReg, 1);
 			return inReg;

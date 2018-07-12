@@ -2284,8 +2284,8 @@ whereRangeVectorLen(Parse * pParse,	/* Parsing context */
 		    pLhs->iColumn != (int)parts[i + nEq].fieldno ||
 		    parts[i + nEq].sort_order != parts[nEq].sort_order)
 			break;
-
-		aff = sqlite3CompareAffinity(pRhs, sqlite3ExprAffinity(pLhs));
+		enum affinity_type rhs_aff = sqlite3ExprAffinity(pRhs);
+		aff = sql_affinity_result(rhs_aff, sqlite3ExprAffinity(pLhs));
 		idxaff =
 		    sqlite3TableColumnAffinity(pIdx->pTable->def,
 					       pLhs->iColumn);

@@ -33,8 +33,8 @@ test:do_execsql_test(
 test:do_execsql_test(
     1.1,
     [[
-        CREATE TABLE pp(x PRIMARY KEY);
-        CREATE TABLE cc(y primary key REFERENCES pp DEFERRABLE INITIALLY DEFERRED);
+        CREATE TABLE pp(x TEXT PRIMARY KEY);
+        CREATE TABLE cc(y TEXT primary key REFERENCES pp DEFERRABLE INITIALLY DEFERRED);
         INSERT INTO pp VALUES('abc');
         INSERT INTO cc VALUES('abc');
     ]])
@@ -49,8 +49,8 @@ test:do_execsql_test(
 test:do_execsql_test(
     1.3,
     [[
-        CREATE TABLE pp(x PRIMARY KEY);
-        CREATE TABLE cc(y primary key REFERENCES pp DEFERRABLE INITIALLY DEFERRED);
+        CREATE TABLE pp(x TEXT PRIMARY KEY);
+        CREATE TABLE cc(y TEXT primary key REFERENCES pp DEFERRABLE INITIALLY DEFERRED);
         INSERT INTO pp VALUES('abc');
         INSERT INTO cc VALUES('abc');
     ]])
@@ -101,11 +101,11 @@ test:do_execsql_test(
 test:do_execsql_test(
     3.1,
     [[
-        CREATE TABLE pp1(x PRIMARY KEY);
-        CREATE TABLE cc1(y REFERENCES pp1 DEFERRABLE INITIALLY DEFERRED, a primary key);
+        CREATE TABLE pp1(x  INT PRIMARY KEY);
+        CREATE TABLE cc1(y  INT REFERENCES pp1 DEFERRABLE INITIALLY DEFERRED, a  INT primary key);
 
-        CREATE TABLE pp2(x PRIMARY KEY);
-        CREATE TABLE cc2(y primary key REFERENCES pp1 DEFERRABLE INITIALLY DEFERRED);
+        CREATE TABLE pp2(x  INT PRIMARY KEY);
+        CREATE TABLE cc2(y  INT primary key REFERENCES pp1 DEFERRABLE INITIALLY DEFERRED);
 
         INSERT INTO pp1 VALUES(2200);
         INSERT INTO cc1 VALUES(NULL, 1);
