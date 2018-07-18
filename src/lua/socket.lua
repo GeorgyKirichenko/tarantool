@@ -332,12 +332,17 @@ local function do_wait(self, what, timeout)
     self._errno = nil
     timeout = timeout or TIMEOUT_INFINITY
 
-    local res = internal.iowait(fd, what, timeout)
-    if res == 0 then
-        self._errno = boxerrno.ETIMEDOUT
-        return 0
+    local deadline = fiber.clock() + timeout
+
+    while fiber.clock() <= deadline do
+        local events = internal.iowait(fd, what, deadline - fiber.clock())
+        fiber.testcancel()
+        if events ~= 0 and events ~= '' then
+            return events
+        end
     end
-    return res
+    self._errno = boxerrno.ETIMEDOUT
+    return 0
 end
 
 local function socket_readable(self, timeout)
@@ -666,7 +671,7 @@ local function read(self, limit, timeout, check, ...)
         return data
     end
 
-    while timeout > 0 do
+    while timeout >= 0 do
         local started = fiber.clock()
 
         assert(rbuf:size() < limit)
@@ -693,15 +698,9 @@ local function read(self, limit, timeout, check, ...)
             return nil
         end
 
-        if not socket_readable(self, timeout) then
-            return nil
-        end
-        if timeout <= 0 then
-            break
-        end
+        socket_readable(self, timeout)
         timeout = timeout - ( fiber.clock() - started )
     end
-    self._errno = boxerrno.ETIMEDOUT
     return nil
 end
 
@@ -740,7 +739,7 @@ local function socket_write(self, octets, timeout)
     end
 
     local started = fiber.clock()
-    while true do
+    while timeout >= 0 do
         local written = syswrite(self, p, e - p)
         if written == 0 then
             return p - s -- eof
@@ -754,11 +753,10 @@ local function socket_write(self, octets, timeout)
             return nil
         end
 
+        socket_writable(self, timeout)
         timeout = timeout - (fiber.clock() - started)
-        if timeout <= 0 or not socket_writable(self, timeout) then
-            break
-        end
     end
+    return p - s
 end
 
 local function socket_send(self, octets, flags)
@@ -997,16 +995,12 @@ local function socket_tcp_connect(s, address, port, timeout)
     -- Wait until the connection is established or ultimately fails.
     -- In either condition the socket becomes writable. To tell these
     -- conditions appart SO_ERROR must be consulted (man connect).
-    if socket_writable(s, timeout) then
+    local deadline = timeout + fiber.clock()
+    if socket_writable(s, deadline - fiber.clock()) then
         s._errno = socket_getsockopt(s, 'SOL_SOCKET', 'SO_ERROR')
-    else
-        s._errno = boxerrno.ETIMEDOUT
+        return s._errno == 0 or nil
     end
-    if s._errno ~= 0 then
-        return nil
-    end
-    -- Connected
-    return true
+    return nil
 end
 
 local function tcp_connect(host, port, timeout)
@@ -1387,7 +1381,7 @@ end
 local function lsocket_tcp_accept(self)
     check_socket(self)
     local deadline = fiber.clock() + (self.timeout or TIMEOUT_INFINITY)
-    repeat
+    while socket_readable(self, deadline - fiber.clock()) do
         local client = socket_accept(self)
         if client then
             setmetatable(client, lsocket_tcp_client_mt)
@@ -1397,7 +1391,7 @@ local function lsocket_tcp_accept(self)
         if not errno_is_transient[errno] then
             break
         end
-    until not socket_readable(self, deadline - fiber.clock())
+    end
     return nil, socket_error(self)
 end
 
@@ -1452,7 +1446,7 @@ local function lsocket_tcp_receive(self, pattern, prefix)
     elseif pattern == "*a" then
         local result = { prefix }
         local deadline = fiber.clock() + (self.timeout or TIMEOUT_INFINITY)
-        repeat
+        while socket_readable(self, deadline - fiber.clock()) do
             local data = socket_sysread(self)
             if data == nil then
                 if not errno_is_transient[self._errno] then
@@ -1463,7 +1457,7 @@ local function lsocket_tcp_receive(self, pattern, prefix)
             else
                 table.insert(result, data)
             end
-        until not socket_readable(self, deadline - fiber.clock())
+        end
         if #result == 1 then
             return nil, 'closed', table.concat(result)
         end
