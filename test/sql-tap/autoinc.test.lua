@@ -618,7 +618,7 @@ test:do_catchsql_test(
             INSERT INTO t2 VALUES('asd'); 
     ]], {
         -- <autoinc-10.2>
-        1, "datatype mismatch"
+        1, "Can't convert asd to INTEGER"
         -- </autoinc-10.2>
     })
 

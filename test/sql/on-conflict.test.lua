@@ -1,5 +1,9 @@
 test_run = require('test_run').new()
+---
+...
 engine = test_run:get_cfg('engine')
+---
+...
 box.sql.execute('pragma sql_default_engine=\''..engine..'\'')
 --
 -- Check that original SQLite ON CONFLICT clause is really

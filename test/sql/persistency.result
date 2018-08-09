@@ -67,8 +67,7 @@ box.sql.execute("SELECT bar, foo, 42, 'awesome' FROM foobar WHERE foo<2")
 ...
 box.sql.execute("SELECT bar, foo, 42, 'awesome' FROM foobar WHERE foo<2.001")
 ---
-- - ['foo', 1, 42, 'awesome']
-  - ['bar', 2, 42, 'awesome']
+- error: Can't convert 2.001 to INTEGER
 ...
 box.sql.execute("SELECT bar, foo, 42, 'awesome' FROM foobar WHERE foo<=2")
 ---
@@ -180,7 +179,7 @@ box.sql.execute("SELECT \"name\", \"opts\" FROM \"_trigger\"");
 -- ... functional
 box.sql.execute("INSERT INTO foobar VALUES ('foobar trigger test', 8888)")
 ---
-- error: datatype mismatch
+- error: Can't convert foobar trigger test to INTEGER
 ...
 box.sql.execute("SELECT * FROM barfoo WHERE foo = 9999");
 ---

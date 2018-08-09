@@ -3090,15 +3090,21 @@ sqlite3ExprCodeIN(Parse * pParse,	/* Parsing and code generating context */
 		assert(!ExprHasProperty(pExpr, EP_xIsSelect));
 		if (destIfNull != destIfFalse) {
 			regCkNull = sqlite3GetTempReg(pParse);
-			sqlite3VdbeAddOp3(v, OP_BitAnd, rLhs, rLhs, regCkNull);
+			sqlite3VdbeAddOp2(v, OP_Integer, 0, regCkNull);
+			int lCheckNull = sqlite3VdbeMakeLabel(v);
+			sqlite3VdbeAddOp2(v, OP_NotNull, rLhs, lCheckNull);
+			sqlite3VdbeAddOp2(v, OP_Null, 0, regCkNull);
+			sqlite3VdbeResolveLabel(v, lCheckNull);
 		}
 		for (ii = 0; ii < pList->nExpr; ii++) {
 			r2 = sqlite3ExprCodeTemp(pParse, pList->a[ii].pExpr,
 						 &regToFree);
 			if (regCkNull
 			    && sqlite3ExprCanBeNull(pList->a[ii].pExpr)) {
-				sqlite3VdbeAddOp3(v, OP_BitAnd, regCkNull, r2,
-						  regCkNull);
+				int lCheckNull = sqlite3VdbeMakeLabel(v);
+				sqlite3VdbeAddOp2(v, OP_NotNull, r2, lCheckNull);
+				sqlite3VdbeAddOp2(v, OP_Null, 0, regCkNull);
+				sqlite3VdbeResolveLabel(v, lCheckNull);
 			}
 			if (ii < pList->nExpr - 1 || destIfNull != destIfFalse) {
 				sqlite3VdbeAddOp4(v, OP_Eq, rLhs, labelOk, r2,
@@ -3149,8 +3155,6 @@ sqlite3ExprCodeIN(Parse * pParse,	/* Parsing and code generating context */
 	 * of the RHS using the LHS as a probe.  If found, the result is
 	 * true.
 	 */
-	sqlite3VdbeAddOp4(v, OP_Affinity, rLhs, nVector, 0, zAff,
-			  nVector);
 	if ((pExpr->flags & EP_xIsSelect)
 	    && !pExpr->is_ephemeral && pUseIndex != NULL) {
 		struct SrcList *src_list = pExpr->x.pSelect->pSrc;
@@ -4135,8 +4139,9 @@ sqlite3ExprCodeTarget(Parse * pParse, Expr * pExpr, int target)
 			sqlite3ExprCodeIN(pParse, pExpr, destIfFalse,
 					  destIfNull);
 			sqlite3VdbeAddOp2(v, OP_Integer, 1, target);
+			sqlite3VdbeGoto(v, destIfNull);
 			sqlite3VdbeResolveLabel(v, destIfFalse);
-			sqlite3VdbeAddOp2(v, OP_AddImm, target, 0);
+			sqlite3VdbeAddOp2(v, OP_Integer, 0, target);
 			sqlite3VdbeResolveLabel(v, destIfNull);
 			return target;
 		}

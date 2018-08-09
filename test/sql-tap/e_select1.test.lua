@@ -332,7 +332,7 @@ test:do_execsql_test(
 
         -- x1: 3 rows, 2 columns
         INSERT INTO x1 VALUES(1,'24', 'converging');
-        INSERT INTO x1 VALUES(2, NULL, CAST(X'CB71' as TEXT));
+        INSERT INTO x1 VALUES(2, NULL, 'Pq');
         INSERT INTO x1 VALUES(3,'blonds', 'proprietary');
 
         -- x2: 2 rows, 3 columns
@@ -1574,7 +1574,7 @@ test:drop_all_tables()
 test:do_execsql_test(
     "e_select-7.10.0",
     [[
-        CREATE TABLE y1(a  TEXT COLLATE "unicode_ci" PRIMARY KEY, b  TEXT COLLATE binary, c INT );
+        CREATE TABLE y1(a  TEXT COLLATE "unicode_ci" PRIMARY KEY, b  TEXT COLLATE binary, c TEXT );
         INSERT INTO y1 VALUES('Abc', 'abc', 'aBC');
     ]], {
         -- <e_select-7.10.0>

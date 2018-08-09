@@ -1,6 +1,6 @@
 #!/usr/bin/env tarantool
 test = require("sqltester")
-test:plan(89)
+test:plan(61)
 
 --!./tcltestrunner.lua
 -- 2005 June 25
@@ -64,6 +64,7 @@ test:do_execsql_test(
         -- </cast-1.4>
     })
 
+if false then
 test:do_execsql_test(
     "cast-1.5",
     [[
@@ -83,6 +84,7 @@ test:do_execsql_test(
         "real"
         -- </cast-1.6>
     })
+end
 
 test:do_execsql_test(
     "cast-1.7",
@@ -104,6 +106,7 @@ test:do_execsql_test(
         -- </cast-1.8>
     })
 
+if false then
 test:do_execsql_test(
     "cast-1.9",
     [[
@@ -123,7 +126,7 @@ test:do_execsql_test(
         "integer"
         -- </cast-1.10>
     })
-
+end
 
 
 test:do_execsql_test(
@@ -286,6 +289,7 @@ test:do_execsql_test(
         -- </cast-1.26>
     })
 
+if false then
 test:do_execsql_test(
     "cast-1.27",
     [[
@@ -305,6 +309,7 @@ test:do_execsql_test(
         "blob"
         -- </cast-1.28>
     })
+end
 
 test:do_execsql_test(
     "cast-1.29",
@@ -386,6 +391,7 @@ test:do_execsql_test(
         -- </cast-1.36>
     })
 
+if false then
 test:do_execsql_test(
     "cast-1.37",
     [[
@@ -405,7 +411,9 @@ test:do_execsql_test(
         "blob"
         -- </cast-1.38>
     })
+end
 
+if false then
 test:do_execsql_test(
     "cast-1.39",
     [[
@@ -425,6 +433,7 @@ test:do_execsql_test(
         "integer"
         -- </cast-1.38>
     })
+end
 
 test:do_execsql_test(
     "cast-1.41",
@@ -466,6 +475,7 @@ test:do_execsql_test(
         -- </cast-1.44>
     })
 
+if false then
 test:do_execsql_test(
     "cast-1.45",
     [[
@@ -485,6 +495,7 @@ test:do_execsql_test(
         "real"
         -- </cast-1.46>
     })
+end
 
 test:do_execsql_test(
     "cast-1.47",
@@ -506,6 +517,7 @@ test:do_execsql_test(
         -- </cast-1.48>
     })
 
+if false then
 test:do_execsql_test(
     "cast-1.49",
     [[
@@ -545,6 +557,7 @@ test:do_execsql_test(
         123
         -- </cast-1.53>
     })
+end
 
 test:do_execsql_test(
     "case-1.60",
@@ -606,6 +619,7 @@ test:do_execsql_test(
         -- </case-1.65>
     })
 
+if false then
 test:do_execsql_test(
     "case-1.66",
     [[
@@ -645,6 +659,7 @@ test:do_execsql_test(
         "real"
         -- </case-1.69>
     })
+end
 
 -- Ticket #1662.  Ignore leading spaces in numbers when casting.
 --
@@ -792,6 +807,7 @@ test:do_execsql_test(
 
 test:do_execsql_test(
     "cast-3.16",
+
     [[
         SELECT CAST('-9223372036854774800' AS numeric)
     ]], {
@@ -817,7 +833,7 @@ test:do_execsql_test(
 
 
 
-if true then --test:execsql("PRAGMA encoding")[1][1]=="UTF-8" then
+if false then --test:execsql("PRAGMA encoding")[1][1]=="UTF-8" then
     test:do_execsql_test(
         "cast-3.21",
         [[
@@ -902,6 +918,7 @@ test:do_sqlite3_finalize_test(
     })
 end
 
+if false then
 test:do_test(
     "cast-4.1",
     function()
@@ -951,7 +968,7 @@ test:do_test(
         0, "abc", 0.0, "abc"
         -- </cast-4.4>
     })
-
+end
 
 
 test:finish_test()
