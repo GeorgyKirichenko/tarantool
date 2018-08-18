@@ -12,15 +12,16 @@ local tap = require "tap"
 -- Create a root test
 --
 test = tap.test("root test")
--- Disable stack traces for this test because Tarantool test system also
--- checks test output.
+-- Disable stack traces and locals for this test because Tarantool test system
+-- also checks test output.
 test.trace = false
+test.locals = false
 
 --
 -- ok, fail and skip predicates
 --
 
-test:plan(32) -- plan to run 3 test
+test:plan(33) -- plan to run 3 test
 test:ok(true, 'true') -- basic function
 local extra = { state = 'some userful information to debug on failure',
         details = 'a table argument formatted using yaml.encode()' }
@@ -134,6 +135,20 @@ test:test('like', function(t)
     t:plan(2)
     t:like('abcde', 'cd', 'like(abcde, cd)')
     t:unlike('abcde', 'acd', 'unlike(abcde, acd)')
+end)
+
+-- The test case implicitly checks that locals will not be printed while
+-- checking the plan.
+test:test('locals', function(t)
+    t.locals = true
+    t:plan(1)
+    t:test('locals nested', function(t)
+        local a = 42
+        local tuple = box.tuple.new({})
+        t:plan(2)
+        t:ok(true, 'locals are not printed in case of success')
+        t:fail('locals are printed in case of fail')
+    end)
 end)
 
 --

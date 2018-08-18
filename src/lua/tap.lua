@@ -1,6 +1,6 @@
 --- tap.lua internal file
 ---
---- The Test Anything Protocol vesion 13 producer
+--- The Test Anything Protocol version 13 producer
 ---
 
 -- yaml formatter must be able to encode any Lua variable
@@ -36,12 +36,41 @@ local function traceback(level)
     return trace
 end
 
+local function locals(test, level)
+    level = level or 3
+    local variables = {}
+    local idx = 1
+    while true do
+        local name, value = debug.getlocal(level, idx)
+        if not name then
+            return variables
+        end
+        -- Compare a table with a tuple raises an error, so we
+        -- check types first.
+        local is_test = type(value) == type(test) and value == test
+        -- Temporary values start with '('.
+        if not name:startswith('(') and not is_test then
+            variables[name] = value
+        end
+        idx = idx + 1
+    end
+end
+
 local function diag(test, fmt, ...)
     io.write(string.rep(' ', 4 * test.level), "# ", string.format(fmt, ...),
         "\n")
 end
 
-local function ok(test, cond, message, extra)
+local function ok(test, cond, message, extra, opts)
+    opts = opts or {}
+    local show_locals
+    if opts.locals ~= nil then
+        show_locals = opts.locals
+    elseif test.locals ~= nil then
+        show_locals = test.locals
+    else
+        show_locals = true
+    end
     test.total = test.total + 1
     io.write(string.rep(' ', 4 * test.level))
     if cond then
@@ -57,6 +86,9 @@ local function ok(test, cond, message, extra)
         extra.trace = traceback()
         extra.filename = extra.trace[#extra.trace].filename
         extra.line = extra.trace[#extra.trace].line
+    end
+    if show_locals then
+        extra.locals = locals(test)
     end
     if next(extra) == nil then
         return false -- don't have extra information
@@ -220,7 +252,8 @@ local function test(parent, name, fun, ...)
         total   = 0;
         failed  = 0;
         planned = 0;
-        trace   = parent == nil and true or parent.trace;
+        trace   = parent == nil or parent.trace;
+        locals  = parent == nil or parent.locals;
     }, test_mt)
     if fun ~= nil then
         test:diag('%s', test.name)
@@ -245,7 +278,7 @@ local function check(test)
     if test.planned ~= test.total then
         if test.parent ~= nil then
             ok(test.parent, false, "bad plan", { planned = test.planned;
-                run = test.total})
+                run = test.total}, {locals = false})
         else
             diag(test, string.format("bad plan: planned %d run %d",
                 test.planned, test.total))
@@ -255,13 +288,13 @@ local function check(test)
             ok(test.parent, false, "failed subtests", {
                 failed = test.failed;
                 planned = test.planned;
-            })
+            }, {locals = false})
         else
             diag(test, "failed subtest: %d", test.failed)
         end
     else
         if test.parent ~= nil then
-            ok(test.parent, true, test.name)
+            ok(test.parent, true, test.name, {locals = false})
         end
     end
     return test.planned == test.total and test.failed == 0
