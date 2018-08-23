@@ -1119,8 +1119,7 @@ tuple_field_by_part_raw(const struct tuple_format *format, const char *data,
 		 * Legacy tuple having no field map for
 		 * JSON index.
 		 */
-		uint32_t path_hash =
-			field_name_hash(part->path, part->path_len);
+		uint32_t path_hash = field_name_hash(part->path, part->path_len);
 		const char *raw = NULL;
 		if (tuple_field_raw_by_path(format, data, field_map,
 					    part->path, part->path_len,
