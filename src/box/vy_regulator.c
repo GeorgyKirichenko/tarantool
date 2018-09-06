@@ -205,7 +205,20 @@ vy_regulator_dump_complete(struct vy_regulator *regulator,
 {
 	regulator->dump_in_progress = false;
 
-	if (dump_duration > 0) {
+	/*
+	 * Update dump bandwidth.
+	 *
+	 * Note, since we free memory in 16 MB blocks (see SLAB_SIZE),
+	 * it may occur that we dump almost all data stored in a block
+	 * but still have to leave it be, because it contains data of
+	 * a newer generation. If the memory limit is small, this may
+	 * result in dumping 0 bytes. In order not to disrupt statistics
+	 * let's simply ignore such results. Normally, the memory limit
+	 * should be large enough for such granularity not to affect the
+	 * measurements (hundreds of megabytes) so this problem isn't
+	 * worth putting more efforts into.
+	 */
+	if (mem_dumped > 0 && dump_duration > 0) {
 		histogram_collect(regulator->dump_bandwidth_hist,
 				  mem_dumped / dump_duration);
 		/*
