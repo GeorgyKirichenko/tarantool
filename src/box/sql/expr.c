@@ -115,6 +115,15 @@ sqlite3ExprAffinity(Expr * pExpr)
 				      &field_no);
 		return pExpr->space_def->fields[field_no].affinity;
 	}
+	/*
+	 * In case of unary plus we shouldn't discard
+	 * affinity of operand (since plus always features
+	 * NUMERIC affinity).
+	 */
+	if (op == TK_UPLUS) {
+		assert(pExpr->pRight == NULL);
+		return pExpr->pLeft->affinity;
+	}
 	return pExpr->affinity;
 }
 
