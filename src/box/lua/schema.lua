@@ -7,7 +7,9 @@ local fun = require('fun')
 local log = require('log')
 local fio = require('fio')
 local json = require('json')
+local fiber = require('fiber')
 local session = box.session
+local fiber = require('fiber')
 local internal = require('box.internal')
 local function setmap(table)
     return setmetatable(table, { __serialize = 'map' })
@@ -2431,3 +2433,146 @@ box.feedback.save = function(file_name)
 end
 
 box.NULL = msgpack.NULL
+
+--
+-- prune dead replicas from replicaset
+--
+box.replication = {}
+
+local function is_alive (replica_info)
+    -- current replica
+    if replica_info ~= nil and replica_info.uuid == box.info.uuid then
+        -- current replica is alive.
+        return true
+    end
+
+    -- no information is available
+    if replica_info == nil then return false end
+
+    -- roles
+    local master = false
+    local replica = false
+    if (replica_info.downstream ~= nil) then master = true end
+    if (replica_info.upstream ~= nil) then replica = true end
+    -- if no up/downstream information is available and this is not current replica
+    -- there is 2 possibilities - dead replica or cascade topology. We do not recommend
+    -- use it, so we decide that such replica is dead
+    if (not master and not replica) then return false end
+
+    -- only replica
+    if replica and not master then
+        if ((replica_info.upstream.status == "disconnected" or
+             replica_info.upstream.status == "stopped")) then
+             return false
+        end
+    end
+
+    -- master
+    if (master and replica_info.downstream.status ~= nil) then
+        if (not replica) then
+            return false
+        elseif (replica_info.upstream.status == "disconnected" or
+                replica_info.upstream.status == "stopped") then
+            return false
+        end
+    end
+
+    return true
+end
+
+-- list replica with lsn delta within given period
+-- this adds a additional info to decide whether everything is ok with replica
+box.replication.list_replicas = function(timeout)
+    if timeout ~= nil then
+        if (type(timeout) ~= 'number' or timeout <= 0) then
+            error('Usage: box.replication.list_replicas([timeout]). Timeout should be positive value')
+        end
+    else
+        error('No timeout is specified')
+    end
+
+    local replicas = {} -- uuid, id, status, lsn activity delta, role
+    local old_info = box.info.replication
+    local new_info = old_info
+    fiber.sleep(timeout)
+    new_info = box.info.replication
+
+    for i, new in pairs(new_info) do
+       local active = "N"
+       local old = old_info[i]
+       local up = "-"
+       local down = "-"
+       local role = ''
+       if new.upstream ~= nil then
+           up = new.upstream.status
+           role = "R"
+       end
+
+       if new.downstream ~= nil then
+           role = string.format("%sM", role)
+           if new.downstream.status ~=nil then
+               down = new.downstream.status
+           end
+
+       end
+
+       if new.uuid == box.info.uuid then
+           up = box.info.status
+       end
+       if new.lsn - old.lsn > 0 then
+           active = "Y"
+       end
+       local line = string.format("id: %s uuid: %s status: %s/%s  active: %s role: %s",
+                                  new.id, new.uuid, up, down, active, role)
+       table.insert(replicas, line)
+    end
+    return replicas
+
+end
+
+-- return  uuid id table of replicas that is assumed to be alive.
+-- Decision is based on status. However, one should use list_replicas to
+-- look on lsn change and status of current replica to form table of alive replicas
+-- that can be passed to box.replication.prune_replicas
+box.replication.get_alive_replicas = function(timeout)
+    if timeout ~= nil then
+        if type(timeout) ~= 'number' or timeout <= 0 then
+            error('Usage: box.replication.get_alive_replicas([timeout]). Timeout should be positive value')
+        end
+    else
+        error('No timeout is specified')
+    end
+
+    local alive = {}
+    local info_old = box.info.replication
+    local info_new = box.info.replication
+    fiber.sleep(timeout)
+    info_new = box.info.replication
+    for i, new_value in pairs(info_new) do
+        local old_value = info_old[i]
+        if old_value == nil or old_value.uuid ~= new_value.uuid then
+            -- Replica was added during waiting period. We can't compare it with previous status.
+            -- We should assume it alive despite its status.
+            -- UUID wouldn't match only if old_replica was deleted and new replica was added at this time.
+            -- If the old replica was recovered with new id, we assume it alive too.
+            table.insert(alive, new_value.uuid)
+        elseif is_alive(new_value) then
+             table.insert(alive, new_value.uuid)
+        end
+    end
+    return alive
+end
+
+--deletes given replica or replicas from _cluster space
+--replicas should be passed as table of [uuid: id]
+--will fail
+box.replication.prune_replicas = function(alive_replicas)
+    if type(alive_replicas) ~= 'table' then
+        error("Usage: box.replication.prune_dead_replicas(alive_replicas)")
+    end
+    for _, tuple in box.space._cluster:pairs() do
+        if alive_replicas[tuple[1]] == nil then
+            box.space._cluster.index.uuid:delete{tuple[2]}
+        end
+    end
+end

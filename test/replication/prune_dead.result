@@ -1,0 +1,123 @@
+test_run = require('test_run').new()
+---
+...
+fiber = require('fiber')
+---
+...
+SERVERS = {'prune_dead1', 'prune_dead2', 'prune_dead3'}
+---
+...
+-- Deploy cluster
+test_run:create_cluster(SERVERS, "replication")
+---
+...
+test_run:wait_fullmesh(SERVERS)
+---
+...
+-- check that we can monitor replica set and all replicas are alive
+test_run:cmd('switch prune_dead1')
+---
+- true
+...
+alive = box.replication.get_alive_replicas(TIMEOUT)
+---
+...
+table.getn(alive) == box.space._cluster:count()
+---
+- true
+...
+box.info.replication[1].uuid == alive[1]
+---
+- true
+...
+box.info.replication[2].uuid == alive[2]
+---
+- true
+...
+box.info.replication[3].uuid == alive[3]
+---
+- true
+...
+-- check if we turn off replication replica is considered as alive
+test_run:cmd('switch prune_dead2')
+---
+- true
+...
+replication = box.cfg.replication
+---
+...
+box.cfg{replication = ''}
+---
+...
+test_run:cmd('switch prune_dead1')
+---
+- true
+...
+alive = box.replication.get_alive_replicas(TIMEOUT)
+---
+...
+table.getn(alive) == box.space._cluster:count()
+---
+- true
+...
+test_run:cmd('switch prune_dead2')
+---
+- true
+...
+box.cfg{replication = replication}
+---
+...
+test_run:cmd('switch default')
+---
+- true
+...
+test_run:wait_fullmesh(SERVERS)
+---
+...
+-- stop replica to see that is not in alive list
+test_run:cmd('stop server prune_dead2')
+---
+- true
+...
+test_run:cmd('switch prune_dead1')
+---
+- true
+...
+alive = box.replication.get_alive_replicas(TIMEOUT)
+---
+...
+table.getn(alive) < box.space._cluster:count()
+---
+- true
+...
+all = {box.info.replication[1].uuid, box.info.replication[2].uuid, box.info.replication[3].uuid}
+---
+...
+box.info.replication[find_excess(all, alive)].upstream.status == "disconnected"
+---
+- true
+...
+box.info.replication[find_excess(all, alive)].downstream.status == "stopped"
+---
+- true
+...
+-- prune  dead replica
+box.replication.prune_replicas(alive)
+---
+...
+table.getn(alive) == box.space._cluster:count()
+---
+- true
+...
+-- Cleanup
+test_run:cmd("switch default")
+---
+- true
+...
+test_run:cmd('start server prune_dead2')
+---
+- true
+...
+test_run:drop_cluster(SERVERS)
+---
+...
