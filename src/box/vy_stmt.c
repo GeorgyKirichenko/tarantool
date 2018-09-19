@@ -44,6 +44,7 @@
 #include "tuple_format.h"
 #include "xrow.h"
 #include "fiber.h"
+#include "assoc.h"
 
 /**
  * Statement metadata keys.
@@ -330,6 +331,71 @@ vy_stmt_replace_from_upsert(const struct tuple *upsert)
 	return replace;
 }
 
+static void
+vy_stmt_msgpack_build(struct tuple_field *field, char *tuple,
+		      uint32_t *field_map, char **offset, bool write_data,
+		      struct mh_i64ptr_t *fields_iov_ht)
+{
+	if (field->type == FIELD_TYPE_ARRAY) {
+		if (write_data)
+			*offset = mp_encode_array(*offset, field->array_size);
+		else
+			*offset += mp_sizeof_array(field->array_size);
+		for (uint32_t i = 0; i < field->array_size; i++) {
+			if (field->array[i] == NULL) {
+				if (write_data)
+					*offset = mp_encode_nil(*offset);
+				else
+					*offset += mp_sizeof_nil();
+				continue;
+			}
+			vy_stmt_msgpack_build(field->array[i], tuple, field_map,
+					      offset, write_data,
+					      fields_iov_ht);
+		}
+		return;
+	} else if (field->type == FIELD_TYPE_MAP) {
+		if (write_data)
+			*offset = mp_encode_map(*offset, mh_size(field->map));
+		else
+			*offset += mp_sizeof_map(mh_size(field->map));
+		mh_int_t i;
+		mh_foreach(field->map, i) {
+			struct mh_strnptr_node_t *node =
+				mh_strnptr_node(field->map, i);
+			assert(node);
+			if (write_data) {
+				*offset = mp_encode_str(*offset, node->str,
+							node->len);
+			} else {
+				*offset += mp_sizeof_str(node->len);
+			}
+			vy_stmt_msgpack_build(node->val, tuple, field_map,
+					      offset, write_data,
+					      fields_iov_ht);
+		}
+		return;
+	}
+
+	mh_int_t k = mh_i64ptr_find(fields_iov_ht, (uint64_t)field, NULL);
+	struct iovec *iov = k != mh_end(fields_iov_ht) ?
+			    mh_i64ptr_node(fields_iov_ht, k)->val : NULL;
+	if (iov == NULL) {
+		if (write_data)
+			*offset = mp_encode_nil(*offset);
+		else
+			*offset += mp_sizeof_nil();
+	} else {
+		if (write_data) {
+			uint32_t data_offset = *offset - tuple;
+			memcpy(*offset, iov->iov_base, iov->iov_len);
+			if (field->offset_slot != TUPLE_OFFSET_SLOT_NIL)
+				field_map[field->offset_slot] = data_offset;
+		}
+		*offset += iov->iov_len;
+	}
+}
+
 static struct tuple *
 vy_stmt_new_surrogate_from_key(const char *key, enum iproto_type type,
 			       const struct key_def *cmp_def,
@@ -338,51 +404,79 @@ vy_stmt_new_surrogate_from_key(const char *key, enum iproto_type type,
 	/* UPSERT can't be surrogate. */
 	assert(type != IPROTO_UPSERT);
 	struct region *region = &fiber()->gc;
+	struct tuple *stmt = NULL;
 
 	uint32_t field_count = format->index_field_count;
-	struct iovec *iov = region_alloc(region, sizeof(*iov) * field_count);
-	if (iov == NULL) {
-		diag_set(OutOfMemory, sizeof(*iov) * field_count,
-			 "region", "iov for surrogate key");
-		return NULL;
-	}
-	memset(iov, 0, sizeof(*iov) * field_count);
 	uint32_t part_count = mp_decode_array(&key);
 	assert(part_count == cmp_def->part_count);
-	assert(part_count <= field_count);
-	uint32_t nulls_count = field_count - cmp_def->part_count;
-	uint32_t bsize = mp_sizeof_array(field_count) +
-			 mp_sizeof_nil() * nulls_count;
-	for (uint32_t i = 0; i < part_count; ++i) {
-		const struct key_part *part = &cmp_def->parts[i];
+	struct iovec *iov = region_alloc(region, sizeof(*iov) * part_count);
+	if (iov == NULL) {
+		diag_set(OutOfMemory, sizeof(*iov) * part_count, "region",
+			"iov for surrogate key");
+		return NULL;
+	}
+	struct mh_i64ptr_t *fields_iov_ht = mh_i64ptr_new();
+	if (fields_iov_ht == NULL) {
+		diag_set(OutOfMemory, sizeof(struct mh_i64ptr_t),
+			 "mh_i64ptr_new", "fields_iov_ht");
+		return NULL;
+	}
+	if (mh_i64ptr_reserve(fields_iov_ht, part_count, NULL) != 0) {
+		diag_set(OutOfMemory, part_count, "mh_i64ptr_reserve",
+			 "fields_iov_ht");
+		goto end;
+	}
+	uint32_t bsize = mp_sizeof_array(field_count);
+	uint32_t nulls_count = field_count;
+	memset(iov, 0, sizeof(*iov) * part_count);
+	const struct key_part *part = cmp_def->parts;
+	for (uint32_t i = 0; i < part_count; ++i, ++part) {
 		assert(part->fieldno < field_count);
 		const char *svp = key;
-		iov[part->fieldno].iov_base = (char *) key;
+		iov[i].iov_base = (char *) key;
 		mp_next(&key);
-		iov[part->fieldno].iov_len = key - svp;
-		bsize += key - svp;
+		iov[i].iov_len = key - svp;
+		struct tuple_field *field;
+		if (part->path == NULL) {
+			field = &format->fields[part->fieldno];
+			--nulls_count;
+		} else {
+			struct mh_strnptr_node_t *ht_record =
+				json_path_hash_get(format->path_hash,
+						   part->path, part->path_len,
+						   part->path_hash);
+			assert(ht_record != NULL);
+			field = ht_record->val;
+			assert(field != NULL);
+		}
+		struct mh_i64ptr_node_t node = {(uint64_t)field, &iov[i]};
+		mh_int_t k = mh_i64ptr_put(fields_iov_ht, &node, NULL, NULL);
+		if (k == mh_end(fields_iov_ht))
+			goto end;
+	}
+	for (uint32_t i = 0; i < field_count; ++i) {
+		char *data = NULL;
+		vy_stmt_msgpack_build(&format->fields[i], NULL, NULL, &data,
+				      false, fields_iov_ht);
+		bsize += data - (char *)NULL;
 	}
 
-	struct tuple *stmt = vy_stmt_alloc(format, bsize);
+	stmt = vy_stmt_alloc(format, bsize);
 	if (stmt == NULL)
-		return NULL;
+		goto end;
 
 	char *raw = (char *) tuple_data(stmt);
 	uint32_t *field_map = (uint32_t *) raw;
 	char *wpos = mp_encode_array(raw, field_count);
 	for (uint32_t i = 0; i < field_count; ++i) {
-		const struct tuple_field *field = &format->fields[i];
-		if (field->offset_slot != TUPLE_OFFSET_SLOT_NIL)
-			field_map[field->offset_slot] = wpos - raw;
-		if (iov[i].iov_base == NULL) {
-			wpos = mp_encode_nil(wpos);
-		} else {
-			memcpy(wpos, iov[i].iov_base, iov[i].iov_len);
-			wpos += iov[i].iov_len;
-		}
+		vy_stmt_msgpack_build(&format->fields[i], raw, field_map, &wpos,
+				      true, fields_iov_ht);
 	}
-	assert(wpos == raw + bsize);
+	assert(wpos <= raw + bsize);
 	vy_stmt_set_type(stmt, type);
+
+end:
+	mh_i64ptr_delete(fields_iov_ht);
 	return stmt;
 }
 

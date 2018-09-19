@@ -159,14 +159,22 @@ tuple_validate_raw(struct tuple_format *format, const char *tuple)
 
 	/* Check field types */
 	struct tuple_field *field = &format->fields[0];
+	const char *pos = tuple;
 	uint32_t i = 0;
 	uint32_t defined_field_count = MIN(field_count, format->field_count);
 	for (; i < defined_field_count; ++i, ++field) {
-		if (key_mp_type_validate(field->type, mp_typeof(*tuple),
+		if (key_mp_type_validate(field->type, mp_typeof(*pos),
 					 ER_FIELD_TYPE, i + TUPLE_INDEX_BASE,
 					 field->is_nullable))
 			return -1;
-		mp_next(&tuple);
+		/* Check all JSON paths. */
+		if (field->childs != NULL) {
+			if (tuple_field_bypass_and_init(field, i, tuple, &pos,
+							NULL) != 0)
+				return -1;
+		} else {
+			mp_next(&pos);
+		}
 	}
 	return 0;
 }

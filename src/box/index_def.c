@@ -209,8 +209,14 @@ index_def_is_valid(struct index_def *index_def, const char *space_name)
 			 * Courtesy to a user who could have made
 			 * a typo.
 			 */
-			if (index_def->key_def->parts[i].fieldno ==
-			    index_def->key_def->parts[j].fieldno) {
+			struct key_part *part_a = &index_def->key_def->parts[i];
+			struct key_part *part_b = &index_def->key_def->parts[j];
+			if ((part_a->fieldno == part_b->fieldno &&
+			     part_a->path == NULL && part_b->path == NULL) ||
+			    (part_a->path_len != 0 &&
+			     part_a->path_len == part_b->path_len &&
+			     memcmp(part_a->path, part_b->path,
+				    part_a->path_len) == 0)) {
 				diag_set(ClientError, ER_MODIFY_INDEX,
 					 index_def->name, space_name,
 					 "same key part is indexed twice");

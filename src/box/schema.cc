@@ -286,19 +286,19 @@ schema_init()
 	 * (and re-created) first.
 	 */
 	/* _schema - key/value space with schema description */
-	struct key_def *key_def = key_def_new(1); /* part count */
+	struct key_def *key_def = key_def_new(1, 0);
 	if (key_def == NULL)
 		diag_raise();
 	auto key_def_guard = make_scoped_guard([&] { key_def_delete(key_def); });
 
 	key_def_set_part(key_def, 0 /* part no */, 0 /* field no */,
-			 FIELD_TYPE_STRING, false, NULL, COLL_NONE);
+			 FIELD_TYPE_STRING, false, NULL, COLL_NONE, NULL, 0);
 	sc_space_new(BOX_SCHEMA_ID, "_schema", key_def, &on_replace_schema,
 		     NULL);
 
 	/* _space - home for all spaces. */
 	key_def_set_part(key_def, 0 /* part no */, 0 /* field no */,
-			 FIELD_TYPE_UNSIGNED, false, NULL, COLL_NONE);
+			 FIELD_TYPE_UNSIGNED, false, NULL, COLL_NONE, NULL, 0);
 
 	/* _collation - collation description. */
 	sc_space_new(BOX_COLLATION_ID, "_collation", key_def,
@@ -341,15 +341,15 @@ schema_init()
 		     NULL);
 
 	key_def_delete(key_def);
-	key_def = key_def_new(2); /* part count */
+	key_def = key_def_new(2, 0);
 	if (key_def == NULL)
 		diag_raise();
 	/* space no */
 	key_def_set_part(key_def, 0 /* part no */, 0 /* field no */,
-			 FIELD_TYPE_UNSIGNED, false, NULL, COLL_NONE);
+			 FIELD_TYPE_UNSIGNED, false, NULL, COLL_NONE, NULL, 0);
 	/* index no */
 	key_def_set_part(key_def, 1 /* part no */, 1 /* field no */,
-			 FIELD_TYPE_UNSIGNED, false, NULL, COLL_NONE);
+			 FIELD_TYPE_UNSIGNED, false, NULL, COLL_NONE, NULL, 0);
 	sc_space_new(BOX_INDEX_ID, "_index", key_def,
 		     &alter_space_on_replace_index, &on_stmt_begin_index);
 

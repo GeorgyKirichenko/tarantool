@@ -982,6 +982,11 @@ vinyl_index_def_change_requires_rebuild(struct index *index,
 			return true;
 		if (!field_type1_contains_type2(new_part->type, old_part->type))
 			return true;
+		if (old_part->path_len != new_part->path_len)
+			return true;
+		if (memcmp(old_part->path, new_part->path,
+			   old_part->path_len) != 0)
+			return true;
 	}
 	return false;
 }

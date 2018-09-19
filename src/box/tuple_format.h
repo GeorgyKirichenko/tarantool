@@ -63,6 +63,8 @@ enum { TUPLE_OFFSET_SLOT_NIL = INT32_MAX };
 
 struct tuple;
 struct tuple_format;
+struct json_path_parser;
+struct mh_strnptr_t;
 
 /** Engine-specific tuple format methods. */
 struct tuple_format_vtab {
@@ -108,6 +110,21 @@ struct tuple_field {
 	bool is_key_part;
 	/** True, if a field can store NULL. */
 	bool is_nullable;
+	/** Tree child records. Must at the end of struct */
+	union {
+		/** Array of fields. */
+		struct {
+			struct tuple_field **array;
+			uint32_t array_size;
+		};
+		/** Hashtable: path -> tuple_field. */
+		struct mh_strnptr_t *map;
+		/**
+		 * Auxiliary pointer to test if field has
+		 * JSON path subtree.
+		 */
+		void *childs;
+	};
 };
 
 /**
@@ -161,6 +178,8 @@ struct tuple_format {
 	 * Shared names storage used by all formats of a space.
 	 */
 	struct tuple_dictionary *dict;
+	/** JSON path hash table. */
+	struct mh_strnptr_t *path_hash;
 	/* Formats of the fields */
 	struct tuple_field fields[0];
 };
@@ -388,7 +407,7 @@ tuple_field_raw(const struct tuple_format *format, const char *tuple,
  * @retval     NULL No field with @a name.
  */
 static inline const char *
-tuple_field_raw_by_name(struct tuple_format *format, const char *tuple,
+tuple_field_raw_by_name(const struct tuple_format *format, const char *tuple,
 			const uint32_t *field_map, const char *name,
 			uint32_t name_len, uint32_t name_hash)
 {
@@ -413,10 +432,50 @@ tuple_field_raw_by_name(struct tuple_format *format, const char *tuple,
  * @retval -1 Error in JSON path.
  */
 int
-tuple_field_raw_by_path(struct tuple_format *format, const char *tuple,
+tuple_field_raw_by_path(const struct tuple_format *format, const char *tuple,
                         const uint32_t *field_map, const char *path,
                         uint32_t path_len, uint32_t path_hash,
                         const char **field);
+
+/**
+ * Retrieve document data @field with initialized @parser.
+ * @param parser JSON parser.
+ * @param[in, out] field Tuple field to lookup.
+ * @retval 0 On success.
+ * @retval > 0 On error in path been used to initialize @parser.
+ */
+int
+tuple_field_dig_with_parser(struct json_path_parser *parser,
+			    const char **field);
+
+/**
+ * Get @hashtable record by key @path, @path_len.
+ * @param hashtable Storage to lookup.
+ * @param path Path string.
+ * @param path_len Length of @path.
+ * @param path_hash Hash of @path.
+ * @retval NULL On nothing found.
+ * @retval not NULL Leaf field pointer for registered path.
+ */
+struct mh_strnptr_node_t *
+json_path_hash_get(struct mh_strnptr_t *hashtable, const char *path,
+		   uint32_t path_len, uint32_t path_hash);
+
+/**
+ * Observe JSON path tree in @field comparing with @tuple
+ * structure. Initialize field map if specified.
+ * @param field Field to use on initialization.
+ * @param idx Root field index to emmit correct error.
+ * @param tuple Source raw data.
+ * @param offset Document field offset to process.
+ * @param field_map Field map to initialize (optional).
+ * @retval 0 On success.
+ * @retval -1 On error.
+ */
+int
+tuple_field_bypass_and_init(const struct tuple_field *field, uint32_t idx,
+			    const char *tuple, const char **offset,
+			    uint32_t *field_map);
 
 #if defined(__cplusplus)
 } /* extern "C" */

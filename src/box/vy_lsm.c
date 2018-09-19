@@ -36,6 +36,7 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <small/mempool.h>
+#include <assoc.h>
 
 #include "diag.h"
 #include "errcode.h"

@@ -54,6 +54,8 @@ struct key_part_def {
 	uint32_t coll_id;
 	/** True if a key part can store NULLs. */
 	bool is_nullable;
+	/** JSON path to data. */
+	char *path;
 };
 
 /**
@@ -74,6 +76,12 @@ struct key_part {
 	struct coll *coll;
 	/** True if a part can store NULLs. */
 	bool is_nullable;
+	/** JSON path to data in canonical form. */
+	char *path;
+	/** JSON path length. */
+	uint32_t path_len;
+	/** JSON path hash. */
+	uint32_t path_hash;
 };
 
 struct key_def;
@@ -133,6 +141,10 @@ struct key_def {
 	 * fields assumed to be MP_NIL.
 	 */
 	bool has_optional_parts;
+	/**
+	 * True, if some key part contain JSON path.
+	 */
+	bool has_json_paths;
 	/** Key fields mask. @sa column_mask.h for details. */
 	uint64_t column_mask;
 	/** The size of the 'parts' array. */
@@ -221,16 +233,17 @@ box_tuple_compare_with_key(const box_tuple_t *tuple_a, const char *key_b,
 /** \endcond public */
 
 static inline size_t
-key_def_sizeof(uint32_t part_count)
+key_def_sizeof(uint32_t part_count, size_t paths_size)
 {
-	return sizeof(struct key_def) + sizeof(struct key_part) * part_count;
+	return sizeof(struct key_def) + sizeof(struct key_part) * part_count +
+	       paths_size;
 }
 
 /**
  * Allocate a new key_def with the given part count.
  */
 struct key_def *
-key_def_new(uint32_t part_count);
+key_def_new(uint32_t part_count, size_t paths_size);
 
 /**
  * Allocate a new key_def with the given part count
@@ -242,8 +255,9 @@ key_def_new_with_parts(struct key_part_def *parts, uint32_t part_count);
 /**
  * Dump part definitions of the given key def.
  */
-void
-key_def_dump_parts(const struct key_def *def, struct key_part_def *parts);
+int
+key_def_dump_parts(struct region *pool, const struct key_def *def,
+		   struct key_part_def *parts);
 
 /**
  * Set a single key part in a key def.
@@ -252,7 +266,7 @@ key_def_dump_parts(const struct key_def *def, struct key_part_def *parts);
 void
 key_def_set_part(struct key_def *def, uint32_t part_no, uint32_t fieldno,
 		 enum field_type type, bool is_nullable, struct coll *coll,
-		 uint32_t coll_id);
+		 uint32_t coll_id, const char *path, uint32_t path_len);
 
 /**
  * Update 'has_optional_parts' of @a key_def with correspondence
@@ -314,12 +328,10 @@ key_def_decode_parts_160(struct key_part_def *parts, uint32_t part_count,
 			 const char **data, const struct field_def *fields,
 			 uint32_t field_count);
 
-/**
- * Returns the part in index_def->parts for the specified fieldno.
- * If fieldno is not in index_def->parts returns NULL.
- */
-const struct key_part *
-key_def_find(const struct key_def *key_def, uint32_t fieldno);
+/** Check if @a key_def contains @a to_find part. */
+bool
+key_def_contains_part(const struct key_def *key_def,
+		      const struct key_part *to_find);
 
 /**
  * Check if key definition @a first contains all parts of
@@ -366,6 +378,8 @@ key_validate_parts(const struct key_def *key_def, const char *key,
 static inline bool
 key_def_is_sequential(const struct key_def *key_def)
 {
+	if (key_def->has_json_paths)
+		return false;
 	for (uint32_t part_id = 0; part_id < key_def->part_count; part_id++) {
 		if (key_def->parts[part_id].fieldno != part_id)
 			return false;
