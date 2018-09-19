@@ -324,6 +324,18 @@ tuple_init_field_map(const struct tuple_format *format, uint32_t *field_map,
 		     const char *tuple);
 
 /**
+ * Get a field refereed by index @part in tuple.
+ * @param format Tuple format.
+ * @param tuple A pointer to MessagePack array.
+ * @param field_map A pointer to the LAST element of field map.
+ * @param part Index part to use.
+ * @retval Field data if the field exists or NULL.
+ */
+const char *
+tuple_field_by_part_raw(const struct tuple_format *format, const char *data,
+			const uint32_t *field_map, struct key_part *part);
+
+/**
  * Get a field at the specific position in this MessagePack array.
  * Returns a pointer to MessagePack data.
  * @param format tuple format

@@ -541,6 +541,13 @@ tuple_field_go_to_key(const char **field, const char *key, int len)
 	return -1;
 }
 
+const char *
+tuple_field_by_part_raw(const struct tuple_format *format, const char *data,
+			const uint32_t *field_map, struct key_part *part)
+{
+	return tuple_field_raw(format, data, field_map, part->fieldno);
+}
+
 int
 tuple_field_raw_by_path(struct tuple_format *format, const char *tuple,
                         const uint32_t *field_map, const char *path,
