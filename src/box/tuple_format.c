@@ -753,6 +753,7 @@ tuple_format_alloc(struct key_def * const *keys, uint16_t key_count,
 		format->dict = dict;
 		tuple_dictionary_ref(dict);
 	}
+	format->epoch = 0;
 	format->refs = 0;
 	format->id = FORMAT_ID_NIL;
 	format->field_count = field_count;
@@ -789,7 +790,8 @@ struct tuple_format *
 tuple_format_new(struct tuple_format_vtab *vtab, struct key_def * const *keys,
 		 uint16_t key_count, uint16_t extra_size,
 		 const struct field_def *space_fields,
-		 uint32_t space_field_count, struct tuple_dictionary *dict)
+		 uint32_t space_field_count, struct tuple_dictionary *dict,
+		 uint64_t epoch)
 {
 	struct tuple_format *format =
 		tuple_format_alloc(keys, key_count, space_field_count, dict);
@@ -799,6 +801,7 @@ tuple_format_new(struct tuple_format_vtab *vtab, struct key_def * const *keys,
 	format->engine = NULL;
 	format->extra_size = extra_size;
 	format->is_temporary = false;
+	format->epoch = epoch;
 	if (tuple_format_register(format) < 0) {
 		tuple_format_destroy(format);
 		free(format);
@@ -1095,13 +1098,22 @@ tuple_field_by_part_raw(const struct tuple_format *format, const char *data,
 
 	struct mh_strnptr_node_t *ht_record = NULL;
 	int32_t offset_slot;
-	if (format->path_hash != NULL &&
-	    (ht_record = json_path_hash_get(format->path_hash, part->path,
-					    part->path_len,
-					    part->path_hash)) != NULL) {
+	if (likely(part->offset_slot_epoch == format->epoch)) {
+		assert(format->epoch != 0);
+		offset_slot = part->offset_slot;
+	} else if (format->path_hash != NULL &&
+		   (ht_record = json_path_hash_get(format->path_hash,
+						   part->path, part->path_len,
+						   part->path_hash)) != NULL) {
 		struct tuple_field *field = ht_record->val;
 		assert(field != NULL);
 		offset_slot = field->offset_slot;
+		/* Cache offset_slot if required. */
+		if (part->offset_slot_epoch < format->epoch) {
+			assert(format->epoch != 0);
+			part->offset_slot = offset_slot;
+			part->offset_slot_epoch = format->epoch;
+		}
 	} else {
 		/*
 		 * Legacy tuple having no field map for

@@ -82,6 +82,17 @@ struct key_part {
 	uint32_t path_len;
 	/** JSON path hash. */
 	uint32_t path_hash;
+	/**
+	 * Epoch of offset slot cache. Initialized with
+	 * incremental epoch of format on caching it's field's
+	 * offset_slot via tuple_field_by_part_raw to speed up
+	 * access on subsequent calls with same format.
+	 * Cache is expected to use "the newest format is most
+	 * relevant" strategy.
+	 */
+	uint64_t offset_slot_epoch;
+	/** Cache with format's field offset slot. */
+	int32_t offset_slot;
 };
 
 struct key_def;
