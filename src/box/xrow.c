@@ -335,6 +335,7 @@ iproto_reply_vclock(struct obuf *out, const struct vclock *vclock,
 			     size - IPROTO_HEADER_LEN);
 
 	char *ptr = obuf_alloc(out, size);
+	(void) ptr;
 	assert(ptr == buf);
 	return 0;
 }
@@ -373,6 +374,7 @@ iproto_reply_vote(struct obuf *out, const struct ballot *ballot,
 			     size - IPROTO_HEADER_LEN);
 
 	char *ptr = obuf_alloc(out, size);
+	(void) ptr;
 	assert(ptr == buf);
 	return 0;
 }
