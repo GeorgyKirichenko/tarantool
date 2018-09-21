@@ -45,11 +45,12 @@
  */
 void
 sqlite3OpenTable(Parse * pParse,	/* Generate code into this VDBE */
-		 int iCur,	/* The cursor number of the table */
+		 int iCur,		/* The cursor number of the table */
 		 struct space *space,	/* The table to be opened */
-		 int opcode)	/* OP_OpenRead or OP_OpenWrite */
+		 MAYBE_UNUSED int opcode)	/* OP_OpenRead or OP_OpenWrite */
 {
 	Vdbe *v;
+	(void) v;
 	v = sqlite3GetVdbe(pParse);
 	assert(opcode == OP_OpenWrite || opcode == OP_OpenRead);
 	assert(space->index_count > 0);
