@@ -2000,6 +2000,8 @@ struct AggInfo {
 		FuncDef *pFunc;	/* The aggregate function implementation */
 		int iMem;	/* Memory location that acts as accumulator */
 		int iDistinct;	/* Ephemeral table used to enforce DISTINCT */
+		/* Register, holding ephemeral's spacepointer. */
+		int reg_eph;
 	} *aFunc;
 	int nFunc;		/* Number of entries in aFunc[] */
 };
@@ -2591,6 +2593,8 @@ struct SelectDest {
 	u8 eDest;		/* How to dispose of the results.  On of SRT_* above. */
 	char *zAffSdst;		/* Affinity used when eDest==SRT_Set */
 	int iSDParm;		/* A parameter used by the eDest disposal method */
+	/* Register containing ephemeral's space pointer. */
+	int reg_eph;
 	int iSdst;		/* Base register where results are written */
 	int nSdst;		/* Number of registers allocated */
 	ExprList *pOrderBy;	/* Key columns for SRT_Queue and SRT_DistQueue */
@@ -3508,7 +3512,6 @@ Select *sqlite3SelectNew(Parse *, ExprList *, SrcList *, Expr *, ExprList *,
 struct Table *
 sql_lookup_table(struct Parse *parse, struct SrcList_item *tbl_name);
 
-void sqlite3OpenTable(Parse *, int iCur, struct space *, int);
 /**
  * Generate code for a DELETE FROM statement.
  *
@@ -3828,14 +3831,14 @@ vdbe_emit_constraint_checks(struct Parse *parse_context,
  * @cursor_id.
  *
  * @param v Virtual database engine.
- * @param cursor_id Primary index cursor.
+ * @param space Pointer to space object.
  * @param raw_data_reg Register with raw data to insert.
  * @param tuple_len Number of registers to hold the tuple.
  * @param on_conflict On conflict action.
  */
 void
-vdbe_emit_insertion_completion(struct Vdbe *v, int cursor_id, int raw_data_reg,
-			       uint32_t tuple_len,
+vdbe_emit_insertion_completion(struct Vdbe *v, struct space *space,
+			       int raw_data_reg, uint32_t tuple_len,
 			       enum on_conflict_action on_conflict);
 
 void
@@ -3870,10 +3873,11 @@ int sqlite3SafetyCheckSickOrOk(sqlite3 *);
  * @param name View name.
  * @param where Option WHERE clause to be added.
  * @param cursor Cursor number for ephemeral table.
+ * @param reg_eph Register holding pointer to ephemeral table.
  */
 void
 sql_materialize_view(struct Parse *parse, const char *name, struct Expr *where,
-		     int cursor);
+		     int cursor, int reg_eph);
 
 /**
  * This is called by the parser when it sees a CREATE TRIGGER
@@ -4529,7 +4533,7 @@ void sqlite3StrAccumAppendAll(StrAccum *, const char *);
 void sqlite3AppendChar(StrAccum *, int, char);
 char *sqlite3StrAccumFinish(StrAccum *);
 void sqlite3StrAccumReset(StrAccum *);
-void sqlite3SelectDestInit(SelectDest *, int, int);
+void sqlite3SelectDestInit(SelectDest *, int, int, int);
 Expr *sqlite3CreateColumnExpr(sqlite3 *, SrcList *, int, int);
 
 int sqlite3ExprCheckIN(Parse *, Expr *);
