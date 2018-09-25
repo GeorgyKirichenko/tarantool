@@ -84,8 +84,7 @@ extern const char *coll_icu_case_first_strs[];
 
 /** Strength ICU settings */
 enum coll_icu_strength {
-	COLL_ICU_STRENGTH_DEFAULT = 0,
-	COLL_ICU_STRENGTH_PRIMARY,
+	COLL_ICU_STRENGTH_PRIMARY = 0,
 	COLL_ICU_STRENGTH_SECONDARY,
 	COLL_ICU_STRENGTH_TERTIARY,
 	COLL_ICU_STRENGTH_QUATERNARY,

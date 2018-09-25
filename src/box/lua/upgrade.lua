@@ -578,6 +578,32 @@ local function upgrade_to_2_1_0()
     box.space._schema:format(format)
 end
 
+--------------------------------------------------------------------------------
+-- Tarantool 2.1.1
+--------------------------------------------------------------------------------
+
+function update_collation_strength_field()
+    local _collation = box.space[box.schema.COLLATION_ID]
+    local _format = _collation:format()
+    for _, collation in ipairs(_collation:select()) do
+        if (collation.opts.strength == nil) then
+            local old_collation = _collation:get{collation.id}
+            local new_collation = {}
+            for _,field in ipairs(_format) do
+                new_collation[field.name] = old_collation[field.name]
+            end
+            new_collation.opts.strength = 'identical'
+            _collation:delete{old_collation.id}
+            _collation:insert(_collation:frommap(new_collation))
+        end
+    end
+end
+
+local function upgrade_to_2_1_1()
+    update_collation_strength_field()
+end
+
+
 local function get_version()
     local version = box.space._schema:get{'version'}
     if version == nil then
@@ -605,7 +631,8 @@ local function upgrade(options)
         {version = mkversion(1, 7, 7), func = upgrade_to_1_7_7, auto = true},
         {version = mkversion(1, 10, 0), func = upgrade_to_1_10_0, auto = true},
         {version = mkversion(1, 10, 2), func = upgrade_to_1_10_2, auto = true},
-        {version = mkversion(2, 1, 0), func = upgrade_to_2_1_0, auto = true}
+        {version = mkversion(2, 1, 0), func = upgrade_to_2_1_0, auto = true},
+        {version = mkversion(2, 1, 1), func = upgrade_to_2_1_1, auto = true}
     }
 
     for _, handler in ipairs(handlers) do

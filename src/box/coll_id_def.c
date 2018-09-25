@@ -55,8 +55,8 @@ icu_case_first_from_str(const char *str, uint32_t len)
 static int64_t
 icu_strength_from_str(const char *str, uint32_t len)
 {
-	return strnindex(coll_icu_strength_strs + 1, str, len,
-			 coll_icu_strength_MAX - 1) + 1;
+	return strnindex(coll_icu_strength_strs, str, len,
+			 coll_icu_strength_MAX);
 }
 
 const struct opt_def coll_icu_opts_reg[] = {

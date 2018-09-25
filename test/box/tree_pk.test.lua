@@ -238,7 +238,7 @@ s:drop()
 
 --https://github.com/tarantool/tarantool/issues/2649
 -- create standart index and alter it to collation index
-box.internal.collation.create('test', 'ICU', 'ru-RU')
+box.internal.collation.create('test', 'ICU', 'ru-RU', {strength = 'identical'})
 box.internal.collation.create('test-ci', 'ICU', 'ru-RU', {strength = 'secondary'})
 s = box.schema.space.create('test')
 i1 = s:create_index('i1', { type = 'tree', parts = {{1, 'str'}}, unique = true })

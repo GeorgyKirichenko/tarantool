@@ -193,22 +193,25 @@ coll_icu_init_cmp(struct coll *coll, const struct coll_def *def)
 			return -1;
 		}
 	}
-	if (def->icu.strength != COLL_ICU_STRENGTH_DEFAULT) {
-		enum coll_icu_strength w = def->icu.strength;
-		UColAttributeValue v =
-			w == COLL_ICU_STRENGTH_PRIMARY ? UCOL_PRIMARY :
-			w == COLL_ICU_STRENGTH_SECONDARY ? UCOL_SECONDARY :
-			w == COLL_ICU_STRENGTH_TERTIARY ? UCOL_TERTIARY :
-			w == COLL_ICU_STRENGTH_QUATERNARY ? UCOL_QUATERNARY :
-			w == COLL_ICU_STRENGTH_IDENTICAL ? UCOL_IDENTICAL :
-			UCOL_DEFAULT;
-		ucol_setAttribute(collator, UCOL_STRENGTH, v, &status);
-		if (U_FAILURE(status)) {
-			diag_set(CollationError, "failed to set strength: %s",
-				 u_errorName(status));
-			return -1;
-		}
+	/*
+	 * Set "strength" option of collation. Default values is
+	 * "primary".
+	 */
+	enum coll_icu_strength w = def->icu.strength;
+	UColAttributeValue v =
+		w == COLL_ICU_STRENGTH_PRIMARY ? UCOL_PRIMARY :
+		w == COLL_ICU_STRENGTH_SECONDARY ? UCOL_SECONDARY :
+		w == COLL_ICU_STRENGTH_TERTIARY ? UCOL_TERTIARY :
+		w == COLL_ICU_STRENGTH_QUATERNARY ? UCOL_QUATERNARY :
+		w == COLL_ICU_STRENGTH_IDENTICAL ? UCOL_IDENTICAL :
+		UCOL_DEFAULT;
+	ucol_setAttribute(collator, UCOL_STRENGTH, v, &status);
+	if (U_FAILURE(status)) {
+		diag_set(CollationError, "failed to set strength: %s",
+			 u_errorName(status));
+		return -1;
 	}
+
 	if (def->icu.numeric_collation != COLL_ICU_DEFAULT) {
 		enum coll_icu_on_off w = def->icu.numeric_collation;
 		UColAttributeValue v = w == COLL_ICU_ON ? UCOL_ON :

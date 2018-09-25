@@ -54,7 +54,6 @@ const char *coll_icu_case_first_strs[] = {
 };
 
 const char *coll_icu_strength_strs[] = {
-	"DEFAULT",
 	"PRIMARY",
 	"SECONDARY",
 	"TERTIARY",
