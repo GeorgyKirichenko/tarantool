@@ -38,6 +38,7 @@
 #include <small/mempool.h>
 #include <msgpuck/msgpuck.h>
 
+#include "txn.h"
 #include "diag.h"
 #include "error.h"
 #include "errcode.h"
@@ -178,6 +179,30 @@ sequence_update(struct sequence *seq, int64_t value)
 	return 0;
 }
 
+/**
+ * Save generated id in VDBE.
+ *
+ * @param value ID to save in VDBE.
+ * @retval 0 Success.
+ * @retval -1 Error.
+ */
+static inline int
+add_new_id_in_vdbe(int64_t value)
+{
+	struct txn *txn = in_txn();
+	if (txn == NULL || txn->psql_txn == NULL)
+		return 0;
+	assert(txn->psql_txn->vdbe != NULL);
+	struct id_entry *id_entry = malloc(sizeof(*id_entry));
+	if (id_entry == NULL) {
+		diag_set(OutOfMemory, sizeof(*id_entry), "malloc", "id_entry");
+		return -1;
+	}
+	id_entry->id = value;
+	stailq_add_tail_entry(txn->psql_txn->id_list, id_entry, link);
+	return 0;
+}
+
 int
 sequence_next(struct sequence *seq, int64_t *result)
 {
@@ -194,6 +219,8 @@ sequence_next(struct sequence *seq, int64_t *result)
 					  new_data) == light_sequence_end)
 			return -1;
 		*result = def->start;
+		if(add_new_id_in_vdbe(*result) != 0)
+			return -1;
 		return 0;
 	}
 	old_data = light_sequence_get(&sequence_data_index, pos);
@@ -228,6 +255,8 @@ done:
 				   new_data, &old_data) == light_sequence_end)
 		unreachable();
 	*result = value;
+	if(add_new_id_in_vdbe(*result) != 0)
+		return -1;
 	return 0;
 overflow:
 	if (!def->cycle) {

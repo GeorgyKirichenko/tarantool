@@ -671,11 +671,28 @@ netbox_decode_sql_info(struct lua_State *L, const char **data)
 	/* Only SQL_INFO_ROW_COUNT is available. */
 	assert(map_size == 1);
 	(void) map_size;
+	lua_newtable(L);
 	uint32_t key = mp_decode_uint(data);
+	/*
+	 * If SQL_INFO_GENERATED_IDS in data then it should be
+	 * just before SQL_INFO_ROW_COUNT.
+	 */
+	if (key == SQL_INFO_GENERATED_IDS) {
+		uint64_t count = mp_decode_array(data);
+		assert (count > 0);
+		lua_createtable(L, 0, count);
+		lua_setfield(L, -2, "generated_ids");
+		lua_getfield(L, -1, "generated_ids");
+		for (uint32_t j = 0; j < count; ++j) {
+			int64_t value = mp_decode_uint(data);
+			lua_pushinteger(L, value);
+			lua_rawseti(L, -2, j + 1);
+		}
+		lua_pop(L, 1);
+		key = mp_decode_uint(data);
+	}
 	assert(key == SQL_INFO_ROW_COUNT);
-	(void) key;
 	uint32_t row_count = mp_decode_uint(data);
-	lua_createtable(L, 0, 1);
 	lua_pushinteger(L, row_count);
 	lua_setfield(L, -2, "rowcount");
 }

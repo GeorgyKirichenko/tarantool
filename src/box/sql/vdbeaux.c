@@ -57,6 +57,8 @@ sqlite3VdbeCreate(Parse * pParse)
 		return 0;
 	memset(p, 0, sizeof(Vdbe));
 	p->db = db;
+	/* Init list of generated ids. */
+	stailq_create(&p->id_list);
 	if (db->pVdbe) {
 		db->pVdbe->pPrev = p;
 	}
@@ -75,7 +77,7 @@ sqlite3VdbeCreate(Parse * pParse)
 }
 
 struct sql_txn *
-sql_alloc_txn()
+sql_alloc_txn(struct Vdbe *vdbe)
 {
 	struct sql_txn *txn = region_alloc_object(&fiber()->gc,
 						  struct sql_txn);
@@ -86,6 +88,8 @@ sql_alloc_txn()
 	}
 	txn->pSavepoint = NULL;
 	txn->fk_deferred_count = 0;
+	txn->vdbe = vdbe;
+	txn->id_list = &vdbe->id_list;
 	return txn;
 }
 
@@ -103,7 +107,7 @@ sql_vdbe_prepare(struct Vdbe *vdbe)
 		 * check FK violations, at least now.
 		 */
 		if (txn->psql_txn == NULL) {
-			txn->psql_txn = sql_alloc_txn();
+			txn->psql_txn = sql_alloc_txn(vdbe);
 			if (txn->psql_txn == NULL)
 				return -1;
 		}
@@ -2261,7 +2265,7 @@ sql_txn_begin(Vdbe *p)
 	struct txn *ptxn = txn_begin(false);
 	if (ptxn == NULL)
 		return -1;
-	ptxn->psql_txn = sql_alloc_txn();
+	ptxn->psql_txn = sql_alloc_txn(p);
 	if (ptxn->psql_txn == NULL) {
 		box_txn_rollback();
 		return -1;
@@ -2746,6 +2750,11 @@ sqlite3VdbeClearObject(sqlite3 * db, Vdbe * p)
 	vdbeFreeOpArray(db, p->aOp, p->nOp);
 	sqlite3DbFree(db, p->aColName);
 	sqlite3DbFree(db, p->zSql);
+	while (stailq_empty(&p->id_list) == 0) {
+		struct id_entry *id_entry =
+			stailq_shift_entry(&p->id_list, struct id_entry, link);
+		free(id_entry);
+	}
 #ifdef SQLITE_ENABLE_STMT_SCANSTATUS
 	{
 		int i;

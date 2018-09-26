@@ -179,10 +179,11 @@ Vdbe *sqlite3VdbeCreate(Parse *);
  * Allocate and initialize SQL-specific struct which completes
  * original Tarantool's txn struct using region allocator.
  *
+ * @param vdbe VDBE that is being prepared or executed.
  * @retval NULL on OOM, new psql_txn struct on success.
  **/
 struct sql_txn *
-sql_alloc_txn();
+sql_alloc_txn(struct Vdbe *vdbe);
 
 /**
  * Prepare given VDBE to execution: initialize structs connected

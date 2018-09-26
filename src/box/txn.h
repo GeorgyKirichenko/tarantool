@@ -117,6 +117,19 @@ struct sql_txn {
 	 * VDBE to the next in the same transaction.
 	 */
 	uint32_t fk_deferred_count;
+	/** Current VDBE. */
+	struct Vdbe *vdbe;
+	/** Pointer to list of generated ids of current VDBE.*/
+	struct stailq *id_list;
+};
+
+/** An element of list of generated ids. */
+struct id_entry
+{
+	/** A link in a generated id list. */
+	struct stailq_entry link;
+	/** Generated id. */
+	int64_t id;
 };
 
 struct txn {

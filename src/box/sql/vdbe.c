@@ -3040,7 +3040,7 @@ case OP_TransactionRollback: {
  */
 case OP_TTransaction: {
 	if (!box_txn()) {
-		if (box_txn_begin() != 0) {
+		if (sql_txn_begin(p) != 0) {
 			rc = SQL_TARANTOOL_ERROR;
 			goto abort_due_to_error;
 		}
