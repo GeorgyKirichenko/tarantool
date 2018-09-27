@@ -418,7 +418,7 @@ sqlite3VdbeMemRelease(Mem * p)
  * return the closest available 64-bit signed integer.
  */
 static int
-doubleToInt64(double r, i64 *i)
+doubleToInt64(double r, int64_t *i)
 {
 #ifdef SQLITE_OMIT_FLOATING_POINT
 	/* When floating-point is omitted, double and int64 are the same thing */
@@ -432,8 +432,8 @@ doubleToInt64(double r, i64 *i)
 	 * So we define our own static constants here using nothing
 	 * larger than a 32-bit integer constant.
 	 */
-	static const i64 maxInt = LARGEST_INT64;
-	static const i64 minInt = SMALLEST_INT64;
+	static const int64_t maxInt = LARGEST_INT64;
+	static const int64_t minInt = SMALLEST_INT64;
 
 	if (r <= (double)minInt) {
 		*i = minInt;
@@ -442,7 +442,7 @@ doubleToInt64(double r, i64 *i)
 		*i = maxInt;
 		return -1;
 	} else {
-		*i = (i64) r;
+		*i = (int64_t) r;
 		return *i != r;
 	}
 #endif
@@ -460,7 +460,7 @@ doubleToInt64(double r, i64 *i)
  * If pMem represents a string value, its encoding might be changed.
  */
 int
-sqlite3VdbeIntValue(Mem * pMem, i64 *i)
+sqlite3VdbeIntValue(Mem * pMem, int64_t *i)
 {
 	int flags;
 	assert(EIGHT_BYTE_ALIGNMENT(pMem));
@@ -528,7 +528,7 @@ sqlite3VdbeMemIntegerify(Mem * pMem, bool is_forced)
 {
 	assert(EIGHT_BYTE_ALIGNMENT(pMem));
 
-	i64 i;
+	int64_t i;
 	if (sqlite3VdbeIntValue(pMem, &i) == 0) {
 		pMem->u.i = i;
 		MemSetTypeFlag(pMem, MEM_Int);
@@ -540,10 +540,10 @@ sqlite3VdbeMemIntegerify(Mem * pMem, bool is_forced)
 	}
 
 	double d;
-	if (sqlite3VdbeRealValue(pMem, &d) || (i64)d != d) {
+	if (sqlite3VdbeRealValue(pMem, &d) || (int64_t) d != d) {
 		return SQLITE_ERROR;
 	}
-	pMem->u.i = (i64)d;
+	pMem->u.i = (int64_t) d;
 	MemSetTypeFlag(pMem, MEM_Int);
 	return SQLITE_OK;
 }
@@ -610,7 +610,7 @@ sqlite3VdbeMemCast(Mem * pMem, u8 aff)
 	    aff != AFFINITY_TEXT)
 		return SQLITE_ERROR;
 	switch (aff) {
-	case AFFINITY_BLOB:{
+	case AFFINITY_BLOB:
 		if (pMem->flags & MEM_Blob)
 			return SQLITE_OK;
 		if (pMem->flags & MEM_Str) {
@@ -620,27 +620,21 @@ sqlite3VdbeMemCast(Mem * pMem, u8 aff)
 		if (pMem->flags & MEM_Int || pMem->flags & MEM_Real)
 			return sqlite3VdbeMemStringify(pMem, 0);
 		return SQLITE_ERROR;
-	}
-	case AFFINITY_NUMERIC:{
+	case AFFINITY_NUMERIC:
 		return sqlite3VdbeMemNumerify(pMem);
-	}
-	case AFFINITY_INTEGER:{
+	case AFFINITY_INTEGER:
 		return sqlite3VdbeMemIntegerify(pMem, true);
-	}
-	case AFFINITY_REAL:{
+	case AFFINITY_REAL:
 		return sqlite3VdbeMemRealify(pMem);
-	}
-	default:{
+	default:
 		assert(aff == AFFINITY_TEXT);
 		assert(MEM_Str == (MEM_Blob >> 3));
 		pMem->flags |= (pMem->flags & MEM_Blob) >> 3;
 		sqlite3ValueApplyAffinity(pMem, AFFINITY_TEXT);
 		assert(pMem->flags & MEM_Str || pMem->db->mallocFailed);
-		pMem->flags &=
-		    ~(MEM_Int | MEM_Real | MEM_Blob | MEM_Zero);
+		pMem->flags &= ~(MEM_Int | MEM_Real | MEM_Blob | MEM_Zero);
+		return SQLITE_OK;
 	}
-	}
-	return SQLITE_OK;
 }
 
 /*
@@ -1326,7 +1320,7 @@ valueFromExpr(sqlite3 * db,	/* The database connection */
 		    sqlite3ValueFromExpr(db, pExpr->pLeft, affinity, &pVal)
 		    && pVal != 0) {
 			if ((rc = sqlite3VdbeMemNumerify(pVal)) != SQLITE_OK)
-				goto exit;
+				return rc;
 			if (pVal->flags & MEM_Real) {
 				pVal->u.r = -pVal->u.r;
 			} else if (pVal->u.i == SMALLEST_INT64) {
@@ -1342,7 +1336,7 @@ valueFromExpr(sqlite3 * db,	/* The database connection */
 		if (pVal == 0)
 			goto no_mem;
 		if ((rc = sqlite3VdbeMemNumerify(pVal)) != SQLITE_OK)
-			goto exit;
+			return rc;
 	}
 #ifndef SQLITE_OMIT_BLOB_LITERAL
 	else if (op == TK_BLOB) {
@@ -1365,7 +1359,6 @@ valueFromExpr(sqlite3 * db,	/* The database connection */
 	}
 
 	*ppVal = pVal;
- exit:
 	return rc;
 
  no_mem:

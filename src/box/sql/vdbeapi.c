@@ -214,7 +214,7 @@ sqlite3_value_double(sqlite3_value * pVal)
 int
 sqlite3_value_int(sqlite3_value * pVal)
 {
-	i64 i;
+	int64_t i;
 	sqlite3VdbeIntValue((Mem *) pVal, &i);
 	return (int)i;
 }
@@ -222,7 +222,7 @@ sqlite3_value_int(sqlite3_value * pVal)
 sqlite_int64
 sqlite3_value_int64(sqlite3_value * pVal)
 {
-	i64 i;
+	int64_t i;
 	sqlite3VdbeIntValue((Mem *) pVal, &i);
 	return i;
 }

@@ -326,24 +326,24 @@ applyNumericAffinity(Mem *pRec, int bTryForInt)
  * @param affinity The affinity to be applied.
  */
 static int
-mem_apply_affinity(struct Mem *record, char affinity)
+mem_apply_affinity(struct Mem *record, enum affinity_type affinity)
 {
 	if ((record->flags & MEM_Null) != 0)
 		return SQLITE_OK;
-
-	if (affinity == AFFINITY_INTEGER) {
+	switch (affinity) {
+	case AFFINITY_INTEGER:
 		if ((record->flags & MEM_Int) == MEM_Int)
 			return 0;
 		return sqlite3VdbeMemIntegerify(record, false);
-	} else if (affinity == AFFINITY_REAL) {
+	case AFFINITY_REAL:
 		if ((record->flags & MEM_Real) == MEM_Real)
 			return 0;
 		return sqlite3VdbeMemRealify(record);
-	} else if (affinity == AFFINITY_NUMERIC) {
+	case AFFINITY_NUMERIC:
 		if ((record->flags & (MEM_Real | MEM_Int)) != 0)
 			return 0;
 		return sqlite3VdbeMemNumerify(record);
-	} else if (affinity == AFFINITY_TEXT) {
+	case AFFINITY_TEXT:
 		/*
 		 * Only attempt the conversion to TEXT if there is
 		 * an integer or real representation (BLOB and
@@ -355,12 +355,13 @@ mem_apply_affinity(struct Mem *record, char affinity)
 		}
 		record->flags &= ~(MEM_Real | MEM_Int);
 		return 0;
-	} else if (affinity == AFFINITY_BLOB) {
+	case AFFINITY_BLOB:
 		if (record->flags & (MEM_Str | MEM_Blob))
 			record->flags |= MEM_Blob;
 		return 0;
+	default:
+		return -1;
 	}
-	return -1;
 }
 
 /*
@@ -1971,27 +1972,15 @@ case OP_Cast: {                  /* in1 */
 	testcase( pOp->p2==AFFINITY_REAL);
 	pIn1 = &aMem[pOp->p1];
 	rc = ExpandBlob(pIn1);
-	if (rc)
+	if (rc != 0)
 		goto abort_due_to_error;
 	rc = sqlite3VdbeMemCast(pIn1, pOp->p2);
 	UPDATE_MAX_BLOBSIZE(pIn1);
-	if (rc) {
-		const char *format;
-		if (pOp->p2 == AFFINITY_TEXT)
-			format = "Can't convert %s to TEXT";
-		else if (pOp->p2 == AFFINITY_BLOB)
-			format = "Can't convert %s to BLOB";
-		else if (pOp->p2 == AFFINITY_NUMERIC)
-			format = "Can't convert %s to NUMERIC";
-		else if (pOp->p2 == AFFINITY_INTEGER)
-			format = "Can't convert %s to INTEGER";
-		else if (pOp->p2 == AFFINITY_REAL)
-			format = "Can't convert %s to REAL";
-
-		sqlite3VdbeError(p, format, sqlite3_value_text(pIn1));
-		goto abort_due_to_error;
-	}
-	break;
+	if (rc == 0)
+		break;
+	sqlite3VdbeError(p, "Can't convert %s to %s", sqlite3_value_text(pIn1),
+			 affinity_type_str(pOp->p2));
+	goto abort_due_to_error;
 }
 #endif /* SQLITE_OMIT_CAST */
 
@@ -2394,7 +2383,7 @@ case OP_Or: {             /* same as TK_OR, in1, in2, out3 */
 	if (pIn1->flags & MEM_Null) {
 		v1 = 2;
 	} else {
-		i64 i;
+		int64_t i;
 		if ((rc = sqlite3VdbeIntValue(pIn1, &i)) != SQLITE_OK) {
 			sqlite3VdbeError(p, "Can't convert to integer %s",
 					 sqlite3_value_text(pIn1));
@@ -2406,7 +2395,7 @@ case OP_Or: {             /* same as TK_OR, in1, in2, out3 */
 	if (pIn2->flags & MEM_Null) {
 		v2 = 2;
 	} else {
-		i64 i;
+		int64_t i;
 		if ((rc = sqlite3VdbeIntValue(pIn2, &i)) != SQLITE_OK) {
 			sqlite3VdbeError(p, "Can't convert to integer %s",
 					 sqlite3_value_text(pIn2));
@@ -2443,7 +2432,7 @@ case OP_Not: {                /* same as TK_NOT, in1, out2 */
 	pOut = &aMem[pOp->p2];
 	sqlite3VdbeMemSetNull(pOut);
 	if ((pIn1->flags & MEM_Null)==0) {
-		i64 i;
+		int64_t i;
 		if ((rc = sqlite3VdbeIntValue(pIn1, &i)) != SQLITE_OK) {
 			sqlite3VdbeError(p, "Can't convert to integer %s",
 					 sqlite3_value_text(pIn1));
@@ -2467,7 +2456,7 @@ case OP_BitNot: {             /* same as TK_BITNOT, in1, out2 */
 	pOut = &aMem[pOp->p2];
 	sqlite3VdbeMemSetNull(pOut);
 	if ((pIn1->flags & MEM_Null)==0) {
-		i64 i;
+		int64_t i;
 		if ((rc = sqlite3VdbeIntValue(pIn1, &i)) != SQLITE_OK) {
 			sqlite3VdbeError(p, "Can't convert to integer %s",
 					 sqlite3_value_text(pIn1));
@@ -2780,19 +2769,9 @@ case OP_Affinity: {
 		assert(pIn1 <= &p->aMem[(p->nMem+1 - p->nCursor)]);
 		assert(memIsValid(pIn1));
 		if ((rc = mem_apply_affinity(pIn1, cAff)) != SQLITE_OK) {
-			const char *format;
-			if (cAff == AFFINITY_TEXT)
-				format = "Can't convert %s to TEXT";
-			else if (cAff == AFFINITY_BLOB)
-				format = "Can't convert %s to BLOB";
-			else if (cAff == AFFINITY_NUMERIC)
-				format = "Can't convert %s to NUMERIC";
-			else if (cAff == AFFINITY_INTEGER)
-				format = "Can't convert %s to INTEGER";
-			else if (cAff == AFFINITY_REAL)
-				format = "Can't convert %s to REAL";
-
-			sqlite3VdbeError(p, format, sqlite3_value_text(pIn1));
+			sqlite3VdbeError(p, "Can't convert %s to %s",
+					 sqlite3_value_text(pIn1),
+					 affinity_type_str(cAff));
 			goto abort_due_to_error;
 		}
 		pIn1++;
@@ -3501,7 +3480,7 @@ case OP_SeekGT: {       /* jump, in3 */
 		if ((pIn3->flags & (MEM_Int|MEM_Real|MEM_Str))==MEM_Str) {
 			applyNumericAffinity(pIn3, 0);
 		}
-		i64 i;
+		int64_t i;
 		if ((rc = sqlite3VdbeIntValue(pIn3, &i)) != SQLITE_OK) {
 			sqlite3VdbeError(p, "Can't convert to integer %s", sqlite3_value_text(pIn1));
 			goto abort_due_to_error;

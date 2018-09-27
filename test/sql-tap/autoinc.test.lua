@@ -618,7 +618,7 @@ test:do_catchsql_test(
             INSERT INTO t2 VALUES('asd'); 
     ]], {
         -- <autoinc-10.2>
-        1, "Can't convert asd to INTEGER"
+        1, "Can't convert asd to integer"
         -- </autoinc-10.2>
     })
 
