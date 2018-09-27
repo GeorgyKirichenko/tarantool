@@ -1,6 +1,6 @@
 #!/usr/bin/env tarantool
 test = require("sqltester")
-test:plan(46)
+test:plan(48)
 
 --!./tcltestrunner.lua
 -- 2004 November 12
@@ -799,6 +799,31 @@ test:do_test(
         -- <autoinc-a69637.2>
         1, 124, 2, 10123
         -- </autoinc-a69637.2>
+    })
+
+-- gh-3670: Assertion with large number in autoincrement column
+test:do_catchsql_test(
+    "autoinc-gh-3670-1",
+    [[
+        CREATE TABLE t0 (s1 INT PRIMARY KEY AUTOINCREMENT);
+        INSERT INTO t0 VALUES (2147483647);
+        INSERT INTO t0 SELECT max(s1)*max(s1)*max(s1) FROM t0;
+    ]], {
+        -- <autoinc-10.2>
+        1, "datatype mismatch"
+        -- </autoinc-10.2>
+    })
+
+test:do_catchsql_test(
+    "autoinc-gh-3670-2",
+    [[
+        CREATE TABLE t1 (s1 INT PRIMARY KEY AUTOINCREMENT, s2 CHAR);
+        INSERT INTO t1 VALUES (1, 'a');
+        INSERT INTO t1 SELECT s2, s2 FROM t1;
+    ]], {
+        -- <autoinc-10.2>
+        1, "datatype mismatch"
+        -- </autoinc-10.2>
     })
 
 test:finish_test()

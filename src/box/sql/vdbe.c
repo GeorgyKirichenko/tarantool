@@ -3758,10 +3758,13 @@ case OP_FCopy: {     /* out2 */
 		/* Flag is set and register is NULL -> do nothing  */
 	} else {
 		assert(memIsValid(pIn1));
-		assert(pIn1->flags &  MEM_Int);
 
 		pOut = &aMem[pOp->p2];
-		MemSetTypeFlag(pOut, MEM_Int);
+		/*
+		 * Flag should be MEM_Int but in some cases it can
+		 * have an other value. See gh-3670.
+		 */
+		MemSetTypeFlag(pOut, pIn1->flags);
 
 		pOut->u.i = pIn1->u.i;
 	}
