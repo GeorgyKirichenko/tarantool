@@ -3723,10 +3723,11 @@ sqlite3ExprCodeTarget(Parse * pParse, Expr * pExpr, int target)
 		}
 	case TK_COLUMN:{
 			int iTab = pExpr->iTable;
+			int col = pExpr->iColumn;
 			if (iTab < 0) {
 				if (pParse->ckBase > 0) {
 					/* Generating CHECK constraints. */
-					return pExpr->iColumn + pParse->ckBase;
+					return col + pParse->ckBase;
 				} else {
 					/* Coding an expression that is part of an index where column names
 					 * in the index refer to the table to which the index belongs
@@ -3735,10 +3736,11 @@ sqlite3ExprCodeTarget(Parse * pParse, Expr * pExpr, int target)
 				}
 			}
 			pExpr->affinity =
-				pExpr->space_def->fields[pExpr->iColumn].affinity;
-			return sqlite3ExprCodeGetColumn(pParse, pExpr->space_def,
-							pExpr->iColumn, iTab,
-							target, pExpr->op2);
+				pExpr->space_def->fields[col].affinity;
+			return sqlite3ExprCodeGetColumn(pParse,
+							pExpr->space_def, col,
+							iTab, target,
+							pExpr->op2);
 		}
 	case TK_INTEGER:{
 			pExpr->affinity = AFFINITY_INTEGER;
