@@ -2427,7 +2427,7 @@ vy_env_quota_exceeded_cb(struct vy_quota *quota)
 	vy_regulator_quota_exceeded(&env->regulator);
 }
 
-static void
+static int
 vy_env_trigger_dump_cb(struct vy_regulator *regulator)
 {
 	struct vy_env *env = container_of(regulator, struct vy_env, regulator);
@@ -2439,9 +2439,10 @@ vy_env_trigger_dump_cb(struct vy_regulator *regulator)
 		 * quota has been consumed by pending transactions.
 		 * There's nothing we can do about that.
 		 */
-		return;
+		return -1;
 	}
 	vy_scheduler_trigger_dump(&env->scheduler);
+	return 0;
 }
 
 static void
