@@ -43,6 +43,15 @@
 #include "trivia/util.h"
 
 /**
+ * Quota timer period, in seconds.
+ *
+ * The timer is used for replenishing the rate limit value so
+ * its period defines how long throttled transactions will wait.
+ * Therefore use a relatively small period.
+ */
+static const double VY_QUOTA_TIMER_PERIOD = 0.1;
+
+/**
  * Return true if the requested amount of memory may be consumed
  * right now, false if consumers have to wait.
  */
@@ -52,6 +61,8 @@ vy_quota_may_use(struct vy_quota *q, size_t size)
 	if (!q->is_enabled)
 		return true;
 	if (q->used + size > q->limit)
+		return false;
+	if (!vy_rate_limit_may_use(&q->rate_limit))
 		return false;
 	return true;
 }
@@ -63,6 +74,7 @@ static inline void
 vy_quota_do_use(struct vy_quota *q, size_t size)
 {
 	q->used += size;
+	vy_rate_limit_use(&q->rate_limit, size);
 }
 
 /**
@@ -74,6 +86,7 @@ vy_quota_do_unuse(struct vy_quota *q, size_t size)
 {
 	assert(q->used >= size);
 	q->used -= size;
+	vy_rate_limit_unuse(&q->rate_limit, size);
 }
 
 /**
@@ -106,6 +119,18 @@ vy_quota_signal(struct vy_quota *q)
 	}
 }
 
+static void
+vy_quota_timer_cb(ev_loop *loop, ev_timer *timer, int events)
+{
+	(void)loop;
+	(void)events;
+
+	struct vy_quota *q = timer->data;
+
+	vy_rate_limit_refill(&q->rate_limit, VY_QUOTA_TIMER_PERIOD);
+	vy_quota_signal(q);
+}
+
 void
 vy_quota_create(struct vy_quota *q, size_t limit,
 		vy_quota_exceeded_f quota_exceeded_cb)
@@ -116,6 +141,9 @@ vy_quota_create(struct vy_quota *q, size_t limit,
 	q->too_long_threshold = TIMEOUT_INFINITY;
 	q->quota_exceeded_cb = quota_exceeded_cb;
 	rlist_create(&q->wait_queue);
+	vy_rate_limit_create(&q->rate_limit);
+	ev_timer_init(&q->timer, vy_quota_timer_cb, 0, VY_QUOTA_TIMER_PERIOD);
+	q->timer.data = q;
 }
 
 void
@@ -123,13 +151,14 @@ vy_quota_enable(struct vy_quota *q)
 {
 	assert(!q->is_enabled);
 	q->is_enabled = true;
+	ev_timer_start(loop(), &q->timer);
 	vy_quota_check_limit(q);
 }
 
 void
 vy_quota_destroy(struct vy_quota *q)
 {
-	(void)q;
+	ev_timer_stop(loop(), &q->timer);
 }
 
 void
@@ -138,6 +167,12 @@ vy_quota_set_limit(struct vy_quota *q, size_t limit)
 	q->limit = limit;
 	vy_quota_check_limit(q);
 	vy_quota_signal(q);
+}
+
+void
+vy_quota_set_rate_limit(struct vy_quota *q, size_t rate)
+{
+	vy_rate_limit_set(&q->rate_limit, rate);
 }
 
 void
@@ -150,7 +185,12 @@ vy_quota_force_use(struct vy_quota *q, size_t size)
 void
 vy_quota_release(struct vy_quota *q, size_t size)
 {
-	vy_quota_do_unuse(q, size);
+	/*
+	 * Don't use vy_quota_do_unuse(), because it affects
+	 * the rate limit state.
+	 */
+	assert(q->used >= size);
+	q->used -= size;
 	vy_quota_signal(q);
 }
 
