@@ -36,6 +36,12 @@ box.schema.user.create('tmp')
 box.schema.user.grant('tmp', 'create', 'universe')
 box.schema.user.grant('tmp', 'write', 'space', '_space')
 box.schema.user.grant('tmp', 'write', 'space', '_schema')
+
+-- Number of records in _space, _index, _sequence:
+space_count = #box.space._space:select()
+index_count = #box.space._index:select()
+sequence_count = #box.space._sequence:select()
+
 box.session.su('tmp')
 --
 -- Error: user do not have rights to write in box.space._index.
@@ -44,5 +50,26 @@ box.session.su('tmp')
 box.sql.execute('create table t1 (id int primary key, a int)')
 -- Error: no such table.
 box.sql.execute('drop table t1')
+
 box.session.su('admin')
+
+space_count == #box.space._space:select()
+index_count == #box.space._index:select()
+sequence_count == #box.space._sequence:select()
+
+box.schema.user.grant('tmp', 'write', 'space', '_index')
+box.session.su('tmp')
+
+--
+-- Error when space created with multiple indexes.
+-- Error: user do not have rights to write in box.space._sequence.
+--
+box.sql.execute('create table t2 (id int primary key autoincrement, a unique, b unique, c unique, d unique)')
+
+box.session.su('admin')
+
+space_count == #box.space._space:select()
+index_count == #box.space._index:select()
+sequence_count == #box.space._sequence:select()
+
 box.schema.user.drop('tmp')

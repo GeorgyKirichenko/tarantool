@@ -54,7 +54,6 @@
 #include "box/schema.h"
 #include "box/tuple_format.h"
 #include "box/coll_id_cache.h"
-#include "fiber.h"
 
 /**
  * Structure that contains some information about record that was
@@ -88,7 +87,7 @@ save_record(struct Parse *parser, uint32_t space_id, int reg_key,
 	    int reg_key_count, int insertion_opcode)
 {
 	struct saved_record *record =
-		region_alloc(&fiber()->gc, sizeof(*record));
+		region_alloc(&parser->region, sizeof(*record));
 	if (record == NULL) {
 		diag_set(OutOfMemory, sizeof(*record), "region_alloc",
 			 "record");
