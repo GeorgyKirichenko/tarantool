@@ -94,6 +94,7 @@ struct errinj {
 	_(ERRINJ_VY_GC, ERRINJ_BOOL, {.bparam = false}) \
 	_(ERRINJ_VY_LOG_FLUSH, ERRINJ_BOOL, {.bparam = false}) \
 	_(ERRINJ_VY_LOG_FLUSH_DELAY, ERRINJ_BOOL, {.bparam = false}) \
+	_(ERRINJ_RELAY_STOP_SEND, ERRINJ_BOOL, {.bparam = false}) \
 	_(ERRINJ_RELAY_TIMEOUT, ERRINJ_DOUBLE, {.dparam = 0}) \
 	_(ERRINJ_RELAY_REPORT_INTERVAL, ERRINJ_DOUBLE, {.dparam = 0}) \
 	_(ERRINJ_RELAY_FINAL_SLEEP, ERRINJ_BOOL, {.bparam = false}) \

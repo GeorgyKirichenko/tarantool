@@ -88,6 +88,13 @@ test_run:cmd('cleanup server test')
 box.cfg{read_only = false}
 ---
 ...
+test_run:cmd('delete server test')
+---
+- true
+...
+test_run:cleanup_cluster()
+---
+...
 -- gh-3160 - Send heartbeats if there are changes from a remote master only
 SERVERS = { 'autobootstrap1', 'autobootstrap2', 'autobootstrap3' }
 ---
@@ -106,7 +113,7 @@ test_run:cmd("switch autobootstrap1")
 test_run = require('test_run').new()
 ---
 ...
-box.cfg{replication_timeout = 0.01, replication_connect_timeout=0.01}
+box.cfg{replication_timeout = 0.2, replication_connect_timeout=0.2}
 ---
 ...
 test_run:cmd("switch autobootstrap2")
@@ -116,7 +123,7 @@ test_run:cmd("switch autobootstrap2")
 test_run = require('test_run').new()
 ---
 ...
-box.cfg{replication_timeout = 0.01, replication_connect_timeout=0.01}
+box.cfg{replication_timeout = 0.2, replication_connect_timeout=0.2}
 ---
 ...
 test_run:cmd("switch autobootstrap3")
@@ -129,7 +136,7 @@ test_run = require('test_run').new()
 fiber=require('fiber')
 ---
 ...
-box.cfg{replication_timeout = 0.01, replication_connect_timeout=0.01}
+box.cfg{replication_timeout = 0.2, replication_connect_timeout=0.2}
 ---
 ...
 _ = box.schema.space.create('test_timeout'):create_index('pk')
@@ -140,15 +147,16 @@ test_run:cmd("setopt delimiter ';'")
 - true
 ...
 function test_timeout()
+    local replicaA = box.info.replication[1].upstream or box.info.replication[2].upstream
+    local replicaB = box.info.replication[3].upstream or box.info.replication[2].upstream
     for i = 0, 99 do 
         box.space.test_timeout:replace({1})
-        fiber.sleep(0.005)
-        local rinfo = box.info.replication
-        if rinfo[1].upstream and rinfo[1].upstream.status ~= 'follow' or
-           rinfo[2].upstream and rinfo[2].upstream.status ~= 'follow' or
-           rinfo[3].upstream and rinfo[3].upstream.status ~= 'follow' then
-            return error('Replication broken')
-        end
+        local n = 200
+        repeat
+            fiber.sleep(0.001)
+            n = n - 1
+            if n == 0 then return error(box.info.replication) end
+        until replicaA.status == 'follow' and replicaB.status == 'follow'
     end
     return true
 end ;
@@ -158,6 +166,7 @@ test_run:cmd("setopt delimiter ''");
 ---
 - true
 ...
+-- the replica status is checked 100 times, each check within replication_timeout
 test_timeout()
 ---
 - true
@@ -229,6 +238,9 @@ test_run:cmd("switch default")
 test_run:drop_cluster(SERVERS)
 ---
 ...
+test_run:cleanup_cluster()
+---
+...
 -- gh-3642 - Check that socket file descriptor doesn't leak
 -- when a replica is disconnected.
 rlimit = require('rlimit')
@@ -249,15 +261,15 @@ lim.rlim_cur = 64
 rlimit.setrlimit(rlimit.RLIMIT_NOFILE, lim)
 ---
 ...
-test_run:cmd('create server sock with rpl_master=default, script="replication/replica.lua"')
+test_run:cmd('create server bork with rpl_master=default, script="replication/replica.lua"')
 ---
 - true
 ...
-test_run:cmd(string.format('start server sock'))
+test_run:cmd('start server bork')
 ---
 - true
 ...
-test_run:cmd('switch sock')
+test_run:cmd('switch bork')
 ---
 - true
 ...
@@ -299,13 +311,20 @@ lim.rlim_cur = old_fno
 rlimit.setrlimit(rlimit.RLIMIT_NOFILE, lim)
 ---
 ...
-test_run:cmd('stop server sock')
+test_run:cmd("stop server bork")
 ---
 - true
 ...
-test_run:cmd('cleanup server sock')
+test_run:cmd("cleanup server bork")
 ---
 - true
+...
+test_run:cmd("delete server bork")
+---
+- true
+...
+test_run:cleanup_cluster()
+---
 ...
 box.schema.user.revoke('guest', 'replication')
 ---
@@ -342,14 +361,22 @@ test_run:cmd('cleanup server er_load2')
 ---
 - true
 ...
+test_run:cmd('delete server er_load1')
+---
+- true
+...
+test_run:cmd('delete server er_load2')
+---
+- true
+...
+test_run:cleanup_cluster()
+---
+...
 --
 -- Test case for gh-3637. Before the fix replica would exit with
 -- an error. Now check that we don't hang and successfully connect.
 --
 fiber = require('fiber')
----
-...
-test_run:cleanup_cluster()
 ---
 ...
 test_run:cmd("create server replica_auth with rpl_master=default, script='replication/replica_auth.lua'")
@@ -390,6 +417,9 @@ test_run:cmd("cleanup server replica_auth")
 test_run:cmd("delete server replica_auth")
 ---
 - true
+...
+test_run:cleanup_cluster()
+---
 ...
 box.schema.user.drop('cluster')
 ---
