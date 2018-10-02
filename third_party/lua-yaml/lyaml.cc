@@ -27,6 +27,7 @@
  */
 
 #include "lyaml.h"
+#include "str_type.h"
 
 #include "trivia/util.h"
 
@@ -209,7 +210,7 @@ static void load_scalar(struct lua_yaml_loader *loader) {
          lua_pushnumber(loader->L, dval);
          return;
       } else if (!strcmp(tag, "bool")) {
-         lua_pushboolean(loader->L, !strcmp(str, "true") || !strcmp(str, "yes"));
+         lua_pushboolean(loader->L, yaml_get_bool(str, length) == YAML_TRUE);
          return;
       } else if (!strcmp(tag, "binary")) {
          frombase64(loader->L, (const unsigned char *)str, length);
@@ -218,20 +219,15 @@ static void load_scalar(struct lua_yaml_loader *loader) {
    }
 
    if (loader->event.data.scalar.style == YAML_PLAIN_SCALAR_STYLE) {
-      if (!strcmp(str, "~")) {
+      yaml_type type;
+      if (yaml_get_null(str, length) == YAML_NULL){
          luaL_pushnull(loader->L);
          return;
-      } else if (!strcmp(str, "true") || !strcmp(str, "yes")) {
-         lua_pushboolean(loader->L, 1);
-         return;
-      } else if (!strcmp(str, "false") || !strcmp(str, "no")) {
-         lua_pushboolean(loader->L, 0);
-         return;
-      } else if (!strcmp(str, "null")) {
-         luaL_pushnull(loader->L);
-         return;
-      } else if (!length) {
-         lua_pushliteral(loader->L, "");
+      } else if ((type = yaml_get_bool(str, length)) != YAML_NO_MATCH){
+         if (type == YAML_TRUE)
+            lua_pushboolean(loader->L, 1);
+         else
+            lua_pushboolean(loader->L, 0);
          return;
       }
 
@@ -367,8 +363,13 @@ static void load(struct lua_yaml_loader *loader) {
       if (!do_parse(loader))
          return;
 
-      if (loader->event.type == YAML_STREAM_END_EVENT)
+      if (loader->event.type == YAML_STREAM_END_EVENT) {
+         if (loader->document_count == 0) {
+            loader->document_count++;
+            luaL_pushnull(loader->L);
+         }
          return;
+      }
 
       loader->document_count++;
       if (load_node(loader) != 1)
@@ -548,7 +549,6 @@ static int yaml_is_flow_mode(struct lua_yaml_dumper *dumper) {
                (evp->type == YAML_MAPPING_START_EVENT &&
                 evp->data.mapping_start.style == YAML_FLOW_MAPPING_STYLE)) {
             return 1;
-            break;
          }
       }
    }
@@ -597,8 +597,11 @@ static int dump_node(struct lua_yaml_dumper *dumper)
       return dump_table(dumper, &field);
    case MP_STR:
       str = lua_tolstring(dumper->L, -1, &len);
-      if (lua_isnumber(dumper->L, -1)) {
-         /* string is convertible to number, quote it to preserve type */
+      if ((yaml_get_null(str, len) == YAML_NULL)
+         || (yaml_get_bool(str, len) != YAML_NO_MATCH)
+         || (lua_isnumber(dumper->L, -1))) {
+         /* string is convertible to non-string scalar type,
+          * quote it to preserve type */
          style = YAML_SINGLE_QUOTED_SCALAR_STYLE;
          break;
       }
@@ -606,12 +609,10 @@ static int dump_node(struct lua_yaml_dumper *dumper)
       if (utf8_check_printable(str, len)) {
          if (yaml_is_flow_mode(dumper)) {
             style = YAML_SINGLE_QUOTED_SCALAR_STYLE;
-         } else if (strstr(str, "\n\n") != NULL || strcmp(str, "true") == 0 ||
-		    strcmp(str, "false") == 0) {
+         } else if (strstr(str, "\n\n") != 0) {
             /*
              * Tarantool-specific: use literal style for string
-             * with empty lines and strings representing boolean
-             * types.
+             * with empty lines.
              * Useful for tutorial().
              */
             style = YAML_LITERAL_SCALAR_STYLE;

@@ -21,7 +21,7 @@ local EOL = "\n...\n"
 
 test = tap.test("console")
 
-test:plan(57)
+test:plan(70)
 
 -- Start console and connect to it
 local server = console.listen(CONSOLE_SOCKET)
@@ -60,20 +60,33 @@ client_info = nil
 
 -- Check console.delimiter()
 client:write("require('console').delimiter(';')\n")
-test:is(yaml.decode(client:read(EOL)), '', "set delimiter to ';'")
+test:is(yaml.decode(client:read(EOL)), nil, "set delimiter to ';'")
 test:is(state.delimiter, ';', "state.delimiter is ';'")
 client:write("require('console').delimiter();\n")
 test:is(yaml.decode(client:read(EOL))[1], ';', "get delimiter is ';'")
 client:write("require('console').delimiter('');\n")
-test:is(yaml.decode(client:read(EOL)), '', "clear delimiter")
+test:is(yaml.decode(client:read(EOL)), nil, "clear delimiter")
 
 --
 -- gh-3476: yaml.encode encodes 'false' and 'true' incorrectly.
+-- gh-3662: yaml.encode encodes booleans with multiline format.
+-- gh-3583: yaml.encode encodes null incorrectly.
 --
-test:is(type(yaml.decode(yaml.encode('false'))), 'string')
-test:is(type(yaml.decode(yaml.encode('true'))), 'string')
+local function decoded_to(values, ethalon)
+    for _, val in ipairs(values) do
+        test:is(yaml.decode(val), ethalon, val)
+    end
+end
+
 test:is(type(yaml.decode(yaml.encode({a = 'false'})).a), 'string')
-test:is(type(yaml.decode(yaml.encode({a = 'false'})).a), 'string')
+test:is((yaml.encode('false')), "--- 'false'\n...\n")
+test:is((yaml.encode(false)), "--- false\n...\n")
+decoded_to({ 'false', 'False', 'FALSE' }, false)
+test:is((yaml.encode('true')), "--- 'true'\n...\n")
+test:is((yaml.encode(true)), "--- true\n...\n")
+decoded_to({ 'true', 'True', 'TRUE' }, true)
+decoded_to({ '---', '~', 'null', 'Null', 'NULL' }, nil)
+test:is((yaml.encode(nil)), "--- null\n...\n")
 
 box.cfg{
     listen=IPROTO_SOCKET;
