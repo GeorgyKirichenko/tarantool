@@ -43,3 +43,17 @@ cn:execute('select 1 limit ? collate not_exist', {1})
 
 cn:close()
 box.schema.user.revoke('guest', 'read,write,execute', 'universe')
+
+-- gh-3573: Strength in the _collation space
+box.internal.collation.create('c0', 'ICU', 'unicode')
+box.internal.collation.create('c1', 'ICU', 'unicode', {strength='primary'})
+box.internal.collation.create('c2', 'ICU', 'unicode', {strength='secondary'})
+box.internal.collation.create('c5', 'ICU', 'unicode', {strength='identical'})
+box.sql.execute([[create table tc (id int primary key autoincrement, s0 string collate "c0", s1 string collate "c1", s5 string collate "c5")]])
+box.sql.execute([[insert into tc values (null, 'a', 'a', 'a')]])
+box.sql.execute([[insert into tc values (null, 'A', 'A', 'A')]])
+box.sql.execute([[insert into tc values (null, 'á', 'á', 'á')]])
+box.sql.execute([[insert into tc values (null, 'â', 'â', 'â')]])
+box.sql.execute([[select * from tc where s0 = 'a']])
+box.sql.execute([[select * from tc where s1 = 'a']])
+box.sql.execute([[select * from tc where s5 = 'a']])
